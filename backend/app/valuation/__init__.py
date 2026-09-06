@@ -10,6 +10,9 @@ from app.valuation.ev_bridge import build_ev_bridge
 from app.valuation.implied import implied_per_share, implied_range
 from app.valuation.ltm import ltm_from_annual_and_stub, ltm_from_quarters
 from app.valuation.models import (
+    AnnualFinancials,
+    BalanceSheetItems,
+    CompanySnapshot,
     DataQualityFlag,
     EVBridge,
     FlagCode,
@@ -28,6 +31,9 @@ from app.valuation.multiples import EV_EBITDA_NM_CAP, compute_multiples, ltm_dil
 from app.valuation.stats import percentile_inc, summarize_multiples
 
 __all__ = [
+    "AnnualFinancials",
+    "BalanceSheetItems",
+    "CompanySnapshot",
     "DataQualityFlag",
     "EVBridge",
     "EV_EBITDA_NM_CAP",

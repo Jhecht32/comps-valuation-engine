@@ -110,12 +110,10 @@ def test_ltm_ties_to_hand_model():
     assert ltm.ebit == 21_022
     assert ltm.net_income == 14_227
     assert ltm.ebitda == 25_333  # EBIT 21,022 + D&A 4,311
-    # Expected flags only: the annual-stub method note, plus gross profit
-    # not being part of the golden model. No staleness as of the price date.
-    assert sorted(f.code for f in ltm.flags) == [
-        FlagCode.LTM_FROM_ANNUAL_STUB,
-        FlagCode.MISSING_LINE_ITEM,
-    ]
+    # Expected flags only: the annual-stub method note. Gross profit is not
+    # part of the golden model but is informational, so its absence is not
+    # flagged. No staleness as of the price date.
+    assert [f.code for f in ltm.flags] == [FlagCode.LTM_FROM_ANNUAL_STUB]
 
 
 def test_ev_bridge_ties_to_hand_model():

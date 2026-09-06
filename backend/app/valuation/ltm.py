@@ -31,7 +31,14 @@ _MAX_CONSECUTIVE_SPAN_DAYS = 320
 # newer quarter should exist and the LTM window is stale.
 _STALE_AFTER_DAYS = 135
 
-_METRIC_FIELDS = ("revenue", "gross_profit", "ebit", "net_income", "d_and_a")
+# Valuation inputs: a None in the window suppresses the metric and flags it.
+_METRIC_FIELDS = ("revenue", "ebit", "net_income", "d_and_a")
+
+# Stitched the same way but never flagged. Gross profit feeds no multiple
+# and is absent for banks and insurers; the income-to-common breakouts use
+# None to mean "not broken out by the source", which ltm_diluted_eps turns
+# into an EPS_FROM_CONSOLIDATED_NI flag, not a missing line item.
+_UNFLAGGED_FIELDS = ("gross_profit", "preferred_dividends", "nci_income")
 
 
 def _missing_flag(field: str, detail: str) -> DataQualityFlag:
@@ -81,6 +88,8 @@ def _assemble(
         as_of=as_of,
         method=method,
         flags=flags,
+        preferred_dividends=metrics["preferred_dividends"],
+        nci_income=metrics["nci_income"],
     )
 
 
@@ -108,11 +117,12 @@ def ltm_from_quarters(
         )
 
     metrics: dict[str, float | None] = {}
-    for field in _METRIC_FIELDS:
+    for field in _METRIC_FIELDS + _UNFLAGGED_FIELDS:
         values = [getattr(q, field) for q in recent]
         if any(v is None for v in values):
             metrics[field] = None
-            flags.append(_missing_flag(field, "in at least one quarter"))
+            if field in _METRIC_FIELDS:
+                flags.append(_missing_flag(field, "in at least one quarter"))
         else:
             metrics[field] = sum(values)
 
@@ -141,13 +151,14 @@ def ltm_from_annual_and_stub(
     ]
 
     metrics: dict[str, float | None] = {}
-    for field in _METRIC_FIELDS:
+    for field in _METRIC_FIELDS + _UNFLAGGED_FIELDS:
         fy_v = getattr(fy, field)
         cur_v = getattr(ytd_current, field)
         prior_v = getattr(ytd_prior, field)
         if fy_v is None or cur_v is None or prior_v is None:
             metrics[field] = None
-            flags.append(_missing_flag(field, "in the FY or stub periods"))
+            if field in _METRIC_FIELDS:
+                flags.append(_missing_flag(field, "in the FY or stub periods"))
         else:
             metrics[field] = fy_v + cur_v - prior_v
 

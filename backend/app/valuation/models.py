@@ -47,6 +47,13 @@ class PeriodFinancials(BaseModel):
     """Income statement metrics for one reported period.
 
     d_and_a comes from the cash flow statement, not the income statement.
+
+    net_income is consolidated net income before the two income-to-common
+    deductions below. preferred_dividends and nci_income (income
+    attributable to noncontrolling interests, an income statement line,
+    not the balance sheet NCI) are None when the source does not break
+    them out and 0.0 when they are known to be zero; the distinction
+    drives the EPS_FROM_CONSOLIDATED_NI flag downstream.
     """
 
     revenue: float | None = None
@@ -54,9 +61,15 @@ class PeriodFinancials(BaseModel):
     ebit: float | None = None
     net_income: float | None = None
     d_and_a: float | None = None
+    preferred_dividends: float | None = None
+    nci_income: float | None = None
 
 
 class QuarterlyFinancials(PeriodFinancials):
+    period_end: date
+
+
+class AnnualFinancials(PeriodFinancials):
     period_end: date
 
 
@@ -69,6 +82,66 @@ class LTMFinancials(BaseModel):
     as_of: date
     method: LTMMethod
     flags: list[DataQualityFlag]
+    # Income-to-common breakouts stitched over the same window; None means
+    # not broken out in at least one period (no flag here, the EPS
+    # calculation flags the consolidated fallback).
+    preferred_dividends: float | None = None
+    nci_income: float | None = None
+
+
+# --- Company snapshot (provider output, engine input) --------------------
+
+
+class BalanceSheetItems(BaseModel):
+    """EV bridge inputs from the most recent balance sheet.
+
+    None means the source has no such line at all; 0.0 means the line is
+    present and zero. build_ev_bridge turns that into the *_reported
+    booleans, so a provider must never collapse "absent" into 0.0.
+    """
+
+    as_of: date
+    total_debt: float | None = None
+    cash_and_equivalents: float | None = None
+    short_term_investments: float | None = None
+    preferred_equity: float | None = None
+    noncontrolling_interest: float | None = None
+
+
+class CompanySnapshot(BaseModel):
+    """Everything the engine needs about one company, as the source
+    reported it, in raw dollars.
+
+    This is the contract between MarketDataProvider implementations and
+    the valuation module: a provider maps raw source data into this shape
+    and does nothing else (no LTM stitching, no fallbacks, no derived
+    figures). Periods are ordered newest first; the engine selects the
+    window it needs. Line items follow the PeriodFinancials conventions:
+    None for "not reported / not broken out", 0.0 for known-zero.
+    """
+
+    ticker: str
+    name: str | None = None
+
+    # Listing currency of the share price vs. currency of the financial
+    # statements. They diverge for ADRs and dual listings; the provider
+    # layer refuses to hand out a snapshot where they differ.
+    price_currency: str | None = None
+    reporting_currency: str | None = None
+
+    share_price: float
+    price_as_of: date
+
+    # Diluted count is the primary EV input; basic is the flagged fallback.
+    diluted_shares: float | None = None
+    basic_shares: float | None = None
+    shares_as_of: date | None = None
+
+    balance_sheet: BalanceSheetItems
+    quarters: list[QuarterlyFinancials]
+    fiscal_years: list[AnnualFinancials]
+
+    source: str
 
 
 # --- Enterprise value bridge --------------------------------------------

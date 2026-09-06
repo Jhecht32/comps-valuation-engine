@@ -5,6 +5,7 @@ description = "Public comparable companies analysis engine"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.5",
+    "yfinance>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -15,3 +16,6 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "live: hits Yahoo Finance over the network; skipped unless COMPS_LIVE_TESTS=1",
+]

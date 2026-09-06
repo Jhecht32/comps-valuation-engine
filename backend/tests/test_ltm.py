@@ -74,11 +74,27 @@ def test_missing_d_and_a_suppresses_ebitda_and_flags():
 
 def test_missing_line_item_in_one_quarter_suppresses_that_metric():
     quarters = [q.model_copy() for q in CLEAN_QUARTERS]
+    quarters[0] = quarters[0].model_copy(update={"ebit": None})
+    ltm = ltm_from_quarters(quarters)
+    assert ltm.ebit is None
+    assert ltm.revenue == pytest.approx(980 * M)
+    assert FlagCode.MISSING_LINE_ITEM in [f.code for f in ltm.flags]
+
+
+def test_missing_gross_profit_is_none_without_flag():
+    # No multiple uses gross profit; banks and insurers never report it.
+    quarters = [q.model_copy() for q in CLEAN_QUARTERS]
     quarters[0] = quarters[0].model_copy(update={"gross_profit": None})
     ltm = ltm_from_quarters(quarters)
     assert ltm.gross_profit is None
-    assert ltm.revenue == pytest.approx(980 * M)
-    assert FlagCode.MISSING_LINE_ITEM in [f.code for f in ltm.flags]
+    assert ltm.flags == []
+
+
+def test_annual_plus_stub_missing_gross_profit_is_none_without_flag():
+    fy = FY.model_copy(update={"gross_profit": None})
+    ltm = ltm_from_annual_and_stub(fy=fy, ytd_current=YTD_CURRENT, ytd_prior=YTD_PRIOR)
+    assert ltm.gross_profit is None
+    assert [f.code for f in ltm.flags] == [FlagCode.LTM_FROM_ANNUAL_STUB]
 
 
 def test_gap_in_quarters_is_flagged():
@@ -169,3 +185,70 @@ def test_annual_plus_stub_missing_piece_suppresses_metric():
     assert ltm.ebit is None
     assert ltm.revenue == pytest.approx((1_000 + 550 - 480) * M)
     assert FlagCode.MISSING_LINE_ITEM in [f.code for f in ltm.flags]
+
+
+# --- Income-to-common breakouts -------------------------------------------
+#
+# preferred_dividends and nci_income are stitched like any other income
+# statement line, but None means "not broken out by the source" rather
+# than "missing valuation input": it propagates to the LTM result without
+# a MISSING_LINE_ITEM flag, and ltm_diluted_eps decides how to flag it.
+
+
+def test_breakouts_are_summed_across_quarters():
+    quarters = [
+        q.model_copy(update={"preferred_dividends": 1 * M, "nci_income": 2 * M})
+        for q in CLEAN_QUARTERS
+    ]
+    ltm = ltm_from_quarters(quarters)
+    assert ltm.preferred_dividends == pytest.approx(4 * M)
+    assert ltm.nci_income == pytest.approx(8 * M)
+    assert ltm.flags == []
+
+
+def test_known_zero_breakouts_survive_as_zero():
+    quarters = [
+        q.model_copy(update={"preferred_dividends": 0.0, "nci_income": 0.0})
+        for q in CLEAN_QUARTERS
+    ]
+    ltm = ltm_from_quarters(quarters)
+    assert ltm.preferred_dividends == 0.0
+    assert ltm.nci_income == 0.0
+
+
+def test_unbroken_out_breakout_in_one_quarter_is_none_without_flag():
+    quarters = [
+        q.model_copy(update={"preferred_dividends": 0.0, "nci_income": 2 * M})
+        for q in CLEAN_QUARTERS
+    ]
+    quarters[1] = quarters[1].model_copy(update={"nci_income": None})
+    ltm = ltm_from_quarters(quarters)
+    assert ltm.nci_income is None
+    assert ltm.preferred_dividends == 0.0
+    assert FlagCode.MISSING_LINE_ITEM not in [f.code for f in ltm.flags]
+
+
+def test_breakouts_default_to_none_when_never_supplied():
+    ltm = ltm_from_quarters(CLEAN_QUARTERS)
+    assert ltm.preferred_dividends is None
+    assert ltm.nci_income is None
+    assert FlagCode.MISSING_LINE_ITEM not in [f.code for f in ltm.flags]
+
+
+def test_annual_plus_stub_stitches_breakouts():
+    fy = FY.model_copy(update={"preferred_dividends": 10 * M, "nci_income": 20 * M})
+    cur = YTD_CURRENT.model_copy(update={"preferred_dividends": 6 * M, "nci_income": 12 * M})
+    prior = YTD_PRIOR.model_copy(update={"preferred_dividends": 5 * M, "nci_income": 9 * M})
+    ltm = ltm_from_annual_and_stub(fy=fy, ytd_current=cur, ytd_prior=prior)
+    assert ltm.preferred_dividends == pytest.approx((10 + 6 - 5) * M)
+    assert ltm.nci_income == pytest.approx((20 + 12 - 9) * M)
+    assert FlagCode.MISSING_LINE_ITEM not in [f.code for f in ltm.flags]
+
+
+def test_annual_plus_stub_unbroken_out_breakout_is_none_without_flag():
+    fy = FY.model_copy(update={"nci_income": None})
+    cur = YTD_CURRENT.model_copy(update={"nci_income": 12 * M})
+    prior = YTD_PRIOR.model_copy(update={"nci_income": 9 * M})
+    ltm = ltm_from_annual_and_stub(fy=fy, ytd_current=cur, ytd_prior=prior)
+    assert ltm.nci_income is None
+    assert FlagCode.MISSING_LINE_ITEM not in [f.code for f in ltm.flags]
