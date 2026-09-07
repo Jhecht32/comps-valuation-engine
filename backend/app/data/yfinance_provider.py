@@ -422,7 +422,12 @@ class YFinanceProvider(MarketDataProvider):
             )
         except Exception as exc:  # network, parsing, Yahoo format drift
             raise MarketDataError(f"{symbol}: yfinance request failed: {exc}") from exc
-        return map_company(raw)
+        try:
+            return map_company(raw)
+        except MarketDataError:
+            raise  # the mapper's own verdicts: unknown ticker, no price, no balance sheet
+        except Exception as exc:  # a statement in a shape the mapper cannot read
+            raise MarketDataError(f"{symbol}: could not map yfinance data: {exc}") from exc
 
     def get_quote(self, ticker: str) -> Quote:
         """Price only, from the chart endpoint; no statements are fetched."""

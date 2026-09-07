@@ -575,3 +575,35 @@ def test_provider_wraps_source_failures_as_market_data_errors():
     provider = YFinanceProvider(ticker_factory=lambda symbol: fake)
     with pytest.raises(MarketDataError, match="yahoo is down"):
         provider.get_company("HD")
+
+
+def bad_balance_sheet():
+    """A balance sheet whose only column is labelled "TTM" rather than a
+    period end, the kind of format drift yfinance shows from time to
+    time. The mapper cannot turn it into a date."""
+    bs = frame(B_COLS[:1], {k: v[:1] for k, v in HD_Q_BALANCE.items()})
+    bs.columns = ["TTM"]
+    return bs
+
+
+def test_provider_wraps_mapper_failures_as_market_data_errors():
+    fake = FakeTicker(raw(quarterly_balance=bad_balance_sheet()))
+    provider = YFinanceProvider(ticker_factory=lambda symbol: fake)
+    with pytest.raises(MarketDataError, match="HD"):
+        provider.get_company("HD")
+
+
+def test_mapper_failure_on_one_peer_lands_in_comps_errors():
+    from app.services import ErrorCode, run_comps
+
+    tickers = {
+        "HD": FakeTicker(raw()),
+        "LOW": FakeTicker(raw(ticker="LOW", quarterly_balance=bad_balance_sheet())),
+        "FND": FakeTicker(raw(ticker="FND")),
+    }
+    provider = YFinanceProvider(ticker_factory=lambda symbol: tickers[symbol])
+    result = run_comps(provider, target="HD", peers=["LOW", "FND"], today=date(2026, 9, 6))
+    assert [p.ticker for p in result.peers] == ["FND"]
+    assert set(result.errors) == {"LOW"}
+    assert result.errors["LOW"].code is ErrorCode.SOURCE_ERROR
+    assert "LOW" in result.errors["LOW"].message
