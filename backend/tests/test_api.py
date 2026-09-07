@@ -217,19 +217,21 @@ def test_peers_shape():
     body = r.json()
     assert body["target"]["ticker"] == "HD"
     assert body["target"]["industry"] == "Home Improvement Retail"
-    assert body["market_cap_band"]["low_multiple"] == 0.25
-    assert body["market_cap_band"]["high_multiple"] == 4.0
-    assert body["market_cap_band"]["low"] == pytest.approx(0.25 * 320308248576)
+    assert body["market_cap_band"]["low_multiple"] == 0.33
+    assert body["market_cap_band"]["high_multiple"] == 3.0
+    assert body["market_cap_band"]["low"] == pytest.approx(0.33 * 320308248576)
     assert [(p["ticker"], p["match_basis"]) for p in body["peers"]] == [("LOW", "industry")]
+    assert [f["code"] for f in body["flags"]] == ["thin_peer_set"]
 
 
-def test_peers_widen_to_sector_for_small_target():
-    # FND ($5.3B): nothing else in Home Improvement Retail fits the band,
-    # so Specialty Retail names in Consumer Cyclical fill in.
+def test_peers_thin_set_is_flagged_not_widened():
+    # FND ($5.3B): nothing else in Home Improvement Retail fits the band.
+    # Specialty Retail names in the same sector are not substituted.
     app = create_app(provider=recorded_provider(), today=lambda: TODAY)
     with TestClient(app) as c:
         body = c.get("/api/peers/FND").json()
-    assert [(p["ticker"], p["match_basis"]) for p in body["peers"]] == [("TSCO", "sector")]
+    assert body["peers"] == []
+    assert [f["code"] for f in body["flags"]] == ["thin_peer_set"]
 
 
 def test_peers_not_found():
@@ -268,3 +270,18 @@ def test_openapi_document_builds(client):
     assert "HTTPValidationError" not in spec["components"]["schemas"]
     ref = comps["responses"]["422"]["content"]["application/json"]["schema"]["$ref"]
     assert ref.endswith("/TickerError")
+
+
+# --- Frontend ----------------------------------------------------------------
+
+
+def test_root_serves_the_frontend_page(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "<title>Comps Valuation Engine</title>" in r.text
+
+
+def test_api_routes_win_over_the_frontend_mount(client):
+    assert client.get("/api/health").json() == {"status": "ok"}
+    assert client.get("/api/company/HD").status_code == 200

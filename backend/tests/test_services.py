@@ -223,50 +223,51 @@ class ScreenCounter(FixtureProvider):
         return super().screen_peers(**kw)
 
 
-def test_suggest_peers_industry_first_then_widens_to_sector():
+def test_suggest_peers_never_widens_to_sector():
+    # "Consumer Cyclical" puts restaurants and hotels next to a home
+    # improvement retailer. A thin industry set is returned as found and
+    # flagged; the sector is never screened.
     provider = ScreenCounter(
         {
             "HD": profile("HD", 320 * B),
             "LOW": profile("LOW", 115 * B),
             "FND": profile("FND", 5 * B),                       # in industry, below band
-            "TSCO": profile("TSCO", 100 * B, industry="Specialty Retail"),
-            "AMZN": profile("AMZN", 2_000 * B, industry="Internet Retail"),  # in sector, above band
-            "MCD": profile("MCD", 220 * B, industry="Restaurants"),
+            "TSCO": profile("TSCO", 150 * B, industry="Specialty Retail"),  # in sector and band
+            "MCD": profile("MCD", 220 * B, industry="Restaurants"),         # in sector and band
         }
     )
     result = suggest_peers(provider, "hd")
     assert result.target.ticker == "HD"
-    assert result.market_cap_band.low == 80 * B
-    assert result.market_cap_band.high == 1_280 * B
-    assert [(p.ticker, p.match_basis) for p in result.peers] == [
-        ("LOW", MatchBasis.INDUSTRY),
-        ("MCD", MatchBasis.SECTOR),
-        ("TSCO", MatchBasis.SECTOR),
-    ]
-    assert provider.screens == [("Home Improvement Retail", "Consumer Cyclical"), (None, "Consumer Cyclical")]
+    assert result.market_cap_band.low == pytest.approx(0.33 * 320 * B)
+    assert result.market_cap_band.high == pytest.approx(3.0 * 320 * B)
+    assert [(p.ticker, p.match_basis) for p in result.peers] == [("LOW", MatchBasis.INDUSTRY)]
+    assert [f.code for f in result.flags] == [FlagCode.THIN_PEER_SET]
+    assert "1 " in result.flags[0].message and "Home Improvement Retail" in result.flags[0].message
+    assert provider.screens == [("Home Improvement Retail", "Consumer Cyclical")]
 
 
-def test_suggest_peers_stays_on_industry_when_it_has_enough():
+def test_suggest_peers_with_three_names_is_not_flagged():
     provider = ScreenCounter(
-        {"HD": profile("HD", 320 * B), **{t: profile(t, 100 * B) for t in ("A", "B", "C")},
+        {"HD": profile("HD", 320 * B), **{t: profile(t, 150 * B) for t in ("A", "B", "C")},
          "MCD": profile("MCD", 220 * B, industry="Restaurants")}
     )
     result = suggest_peers(provider, "HD")
     assert {p.ticker for p in result.peers} == {"A", "B", "C"}
+    assert result.flags == []
     assert provider.screens == [("Home Improvement Retail", "Consumer Cyclical")]
 
 
-def test_suggest_peers_uses_sector_when_target_has_no_industry():
+def test_suggest_peers_needs_an_industry():
     provider = ScreenCounter(
         {"HD": profile("HD", 320 * B, industry=None), "MCD": profile("MCD", 220 * B, industry="Restaurants")}
     )
-    result = suggest_peers(provider, "HD")
-    assert [(p.ticker, p.match_basis) for p in result.peers] == [("MCD", MatchBasis.SECTOR)]
-    assert provider.screens == [(None, "Consumer Cyclical")]
+    with pytest.raises(InsufficientDataError, match="industry"):
+        suggest_peers(provider, "HD")
+    assert provider.screens == []
 
 
 def test_suggest_peers_respects_limit():
-    provider = ScreenCounter({"HD": profile("HD", 320 * B), **{f"P{i}": profile(f"P{i}", (100 + i) * B) for i in range(10)}})
+    provider = ScreenCounter({"HD": profile("HD", 320 * B), **{f"P{i}": profile(f"P{i}", (150 + i) * B) for i in range(10)}})
     assert len(suggest_peers(provider, "HD", limit=4).peers) == 4
 
 

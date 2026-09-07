@@ -6,17 +6,22 @@ create_app takes the inner market data provider (yfinance by default)
 and a clock; at startup the lifespan wraps the provider in CachedProvider
 so every request shares one TTL cache, and exposes it on app.state.
 Tests pass a fixture provider and a fixed date.
+
+The single-file frontend in ../frontend is served at / from the same
+app, so no separate static server (and no CORS) is needed locally.
 """
 
 import os
 from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api import router
 from app.data import CachedProvider, MarketDataProvider
@@ -29,6 +34,7 @@ from app.data.provider import (
 from app.services import ErrorCode, InsufficientDataError, TickerError, ticker_error
 
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 # Most specific first; Starlette matches handlers by the exception's MRO.
 _STATUS_BY_ERROR: list[tuple[type[Exception], int]] = [
@@ -85,6 +91,7 @@ def create_app(
     provider: MarketDataProvider | None = None,
     today: Callable[[], date] = date.today,
     cors_origins: list[str] | None = None,
+    frontend_dir: Path | None = FRONTEND_DIR,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -110,6 +117,10 @@ def create_app(
     )
     app.include_router(router)
     _register_error_handlers(app)
+    if frontend_dir is not None and frontend_dir.is_dir():
+        # Mounted last so the /api routes match first; html=True serves
+        # index.html at /. Skipped when the directory is absent (backend-only deploys).
+        app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
     return app
 
 

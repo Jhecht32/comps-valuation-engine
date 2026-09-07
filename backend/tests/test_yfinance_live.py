@@ -19,6 +19,8 @@ from datetime import date
 
 import pytest
 
+from app.data.peers import MARKET_CAP_HIGH_MULTIPLE, MARKET_CAP_LOW_MULTIPLE
+
 from app.data import CurrencyMismatchError, TickerNotFoundError
 from app.data.yfinance_provider import YFinanceProvider
 from tests.helpers import value_snapshot
@@ -156,8 +158,8 @@ def test_live_profile_and_screen_find_lowes_for_home_depot():
     found = provider.screen_peers(
         sector=hd.sector,
         industry=hd.industry,
-        market_cap_min=hd.market_cap * 0.25,
-        market_cap_max=hd.market_cap * 4.0,
+        market_cap_min=hd.market_cap * MARKET_CAP_LOW_MULTIPLE,
+        market_cap_max=hd.market_cap * MARKET_CAP_HIGH_MULTIPLE,
     )
     by_ticker = {p.ticker: p for p in found}
     assert "LOW" in by_ticker, sorted(by_ticker)

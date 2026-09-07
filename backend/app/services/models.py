@@ -113,6 +113,11 @@ class SuggestedPeer(CompanyProfile):
 
 
 class PeerSuggestions(BaseModel):
+    """Candidates from the industry screen, closest in size first. flags
+    carries THIN_PEER_SET when fewer than MIN_PEERS names were found;
+    the set is returned as found, never padded from the sector."""
+
     target: CompanyProfile
     market_cap_band: MarketCapBand
     peers: list[SuggestedPeer]
+    flags: list[DataQualityFlag]

@@ -68,6 +68,7 @@ def post_comps(body: CompsRequest, provider: ProviderDep, today: TodayDep) -> Co
     responses={**_ERRORS, 501: {"model": ErrorResponse, "description": "Source cannot screen for peers"}},
 )
 def get_peers(ticker: TickerPath, provider: ProviderDep) -> PeersResponse:
-    """Suggested peers: same industry (sector when the industry is thin),
-    market cap within 0.25x-4.0x of the target, same currencies."""
+    """Suggested peers: same industry, market cap within 0.33x-3.0x of the
+    target, same currencies. Never widened to the sector; a set of fewer
+    than three names is returned as found with a thin_peer_set flag."""
     return suggest_peers(provider, ticker)

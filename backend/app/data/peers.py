@@ -1,11 +1,11 @@
 """Peer selection rule, applied identically to every source.
 
 A suggested peer shares the target's industry (or, on the sector basis,
-its sector), sits inside a market-cap band of 0.25x-4.0x the target, and
+its sector), sits inside a market-cap band of 0.33x-3.0x the target, and
 trades and reports in the target's currencies. The band is a
-size-similarity heuristic, not a valuation input: a company one-fifth
+size-similarity heuristic, not a valuation input: a company a quarter
 the size of the target is usually at a different stage of its life and
-priced accordingly, and one five times larger dominates the median.
+priced accordingly, and one four times larger dominates the median.
 """
 
 import math
@@ -16,8 +16,8 @@ from pydantic import BaseModel
 
 from app.data.provider import CompanyProfile
 
-MARKET_CAP_LOW_MULTIPLE = 0.25
-MARKET_CAP_HIGH_MULTIPLE = 4.0
+MARKET_CAP_LOW_MULTIPLE = 0.33
+MARKET_CAP_HIGH_MULTIPLE = 3.0
 
 
 class MatchBasis(str, Enum):

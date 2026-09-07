@@ -28,6 +28,9 @@ class FlagCode(str, Enum):
     NONCONSECUTIVE_QUARTERS = "nonconsecutive_quarters"
     STALE_FILING = "stale_filing"
     EPS_FROM_CONSOLIDATED_NI = "eps_from_consolidated_ni"
+    # Raised by peer screening (app.services.peers), not by the engine:
+    # the industry screen found fewer names than a usable set needs.
+    THIN_PEER_SET = "thin_peer_set"
 
 
 class DataQualityFlag(BaseModel):

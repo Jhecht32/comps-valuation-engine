@@ -2,7 +2,7 @@
 
 ## What it does
 
-Comparable-companies analysis over public data, as an API. Given a target and a peer list, it pulls prices and statements from Yahoo Finance, builds each company's enterprise value and LTM multiples (EV/Revenue, EV/EBITDA, EV/EBIT, P/E), summarises the peer distribution (quartiles, median, mean, n after NM exclusion), and applies them back to the target for an implied per-share range. Every approximation travels with the result as a data-quality flag; a peer that cannot be valued lands in a per-ticker errors map rather than failing the run. FastAPI, yfinance, in-memory TTL cache.
+Comparable-companies analysis over public data, as an API. Given a target and a peer list, it pulls prices and statements from Yahoo Finance, builds each company's enterprise value and LTM multiples (EV/Revenue, EV/EBITDA, EV/EBIT, P/E), summarises the peer distribution, and applies them back to the target for an implied per-share range. Every approximation travels with the result as a data-quality flag; an unvaluable peer lands in a per-ticker errors map rather than failing the run. FastAPI, yfinance, in-memory TTL cache, single-file HTML frontend.
 
 ## EV bridge
 
@@ -29,7 +29,7 @@ The engine was tied line-by-line to a model built by hand from Home Depot's 10-Q
 - No calendarization for non-December fiscal year ends.
 - Yahoo's headline Total Debt bundles capitalized operating leases (62,567 vs. 52,896 for HD), so debt is built from component rows to stay consistent with unadjusted EBITDA.
 - Filers that split tangible and intangible D&A require summing both cash-flow lines; the income-statement figure understates HD's EBITDA by roughly $850mm annually.
-- Peer screening is mechanical, not judgment-based.
+- Peer screening is mechanical (same industry, market cap 0.33x–3.0x, no sector fallback): a starting point, not a substitute for judgment. Prune and add names before trusting the output.
 - Not investment advice.
 
 ## Setup
@@ -37,9 +37,9 @@ The engine was tied line-by-line to a model built by hand from Home Depot's 10-Q
 Requires Python 3.11+ and GNU Make.
 
 ```
-make dev        # create backend/.venv, install, serve http://127.0.0.1:8000
+make dev        # create backend/.venv, install, serve UI + API at http://127.0.0.1:8000
 make test       # offline suite
 make test-live  # also hits Yahoo Finance
 ```
 
-Docs at `/docs`. Endpoints: `GET /api/company/{ticker}`, `POST /api/comps`, `GET /api/peers/{ticker}`. Override `HOST`/`PORT` on the make command line.
+UI at `/`, docs at `/docs`. Endpoints: `GET /api/company/{ticker}`, `POST /api/comps`, `GET /api/peers/{ticker}`.

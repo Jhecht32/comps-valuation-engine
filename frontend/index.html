@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comps Valuation Engine</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --ink: #1b1b1b; --muted: #6a6a6a; --line: #d8d8d4; --bg: #ffffff; --panel: #f5f5f2;
+    --target: #edf2fa; --accent: #1f4e9c; --bad: #a3261f; --bad-bg: #fbf0ef; --warn: #7a5200;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); background: var(--bg);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1440px; margin: 0 auto; padding: 24px 28px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 12px; margin: 28px 0 8px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  h3 { font-size: 13px; margin: 0 0 6px; }
+  p.sub { color: var(--muted); margin: 0 0 18px; }
+  p.note { color: var(--muted); margin: 0 0 8px; font-size: 13px; }
+  form { display: grid; grid-template-columns: 160px 1fr auto; gap: 10px; align-items: end; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input { width: 100%; font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; }
+  input#ticker { text-transform: uppercase; }
+  button { font: inherit; padding: 8px 16px; border: 1px solid var(--accent); background: var(--accent);
+           color: #fff; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  button.secondary { background: #fff; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 8px; }
+  #status { margin-top: 10px; color: var(--muted); min-height: 1.4em; }
+  #error { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-bg); color: var(--bad); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: bottom; }
+  #comps { font-size: 13px; }
+  td.name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr:last-child td { border-bottom: 0; }
+  th { position: sticky; top: 0; background: var(--panel); font-weight: 600; font-size: 12px; color: var(--muted); }
+  th small { display: block; font-weight: 400; }
+  th.l, td.l { text-align: left; }
+  tr.target td { background: var(--target); font-weight: 600; }
+  tr.target td:first-child { border-left: 3px solid var(--accent); }
+  td.nm, td.na { color: var(--muted); }
+  td.nm { cursor: help; text-decoration: underline dotted; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+         color: var(--accent); border: 1px solid var(--accent); border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+  .n { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  details.help { margin-top: 18px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+  details.help summary { cursor: pointer; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--accent); list-style: none; }
+  details.help summary::-webkit-details-marker { display: none; }
+  details.help summary::before { content: "\25B8"; display: inline-block; width: 1em; color: var(--muted); }
+  details.help[open] summary::before { content: "\25BE"; }
+  details.help[open] summary { border-bottom: 1px solid var(--line); }
+  details.help .body { padding: 6px 16px 12px; max-width: 76ch; font-size: 13px; }
+  details.help p { margin: 8px 0; }
+  th[title] { cursor: help; }
+  ul { margin: 0; padding-left: 18px; }
+  li { margin: 4px 0; }
+  li.flag { color: var(--warn); }
+  li.err { color: var(--bad); }
+  .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); margin: 0 4px; }
+  .none { color: var(--muted); list-style: none; margin-left: -18px; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 12px; }
+  @media (max-width: 960px) { .grid, form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Comps Valuation Engine</h1>
+  <p class="sub">Trading comparables from public filings via Yahoo Finance. LTM figures, unadjusted. Not investment advice.</p>
+
+  <form id="form">
+    <div>
+      <label for="ticker">Target ticker</label>
+      <input id="ticker" placeholder="HD" required pattern="[A-Za-z0-9.\-]{1,12}" autocomplete="off" autofocus>
+    </div>
+    <div>
+      <label for="peers">Peers (suggested on run, editable, comma-separated)</label>
+      <input id="peers" placeholder="Filled from /api/peers on run" autocomplete="off">
+    </div>
+    <div class="actions">
+      <button type="submit" id="run" title="GET /api/peers/{ticker}, then POST /api/comps">Run</button>
+      <button type="button" class="secondary" id="rerun" title="POST /api/comps with the peers listed, without re-fetching suggestions">Run with listed peers</button>
+    </div>
+  </form>
+  <div id="status"></div>
+  <div id="error" hidden></div>
+
+  <details class="help" id="help">
+    <summary>How to read this</summary>
+    <div class="body">
+      <p><b>What this is.</b> Comparable companies analysis values a company by looking at what the market pays for similar businesses, expressed as multiples of revenue or earnings. If peers trade at 12&times; EBITDA, the target is worth roughly 12&times; its own EBITDA.</p>
+      <p><b>Equity value vs. enterprise value.</b> Equity value is what the shares are worth: price &times; diluted shares. Enterprise value is what the whole business is worth regardless of how it is financed: equity value plus debt, minus cash, because an acquirer would assume the debt and get the cash. EV is what you compare across companies with different leverage.</p>
+      <p><b>Numerator and denominator must match.</b> EV pairs with EBITDA, EBIT, and revenue, figures available to all capital providers. Price pairs with EPS, which is after interest and belongs to shareholders only. EV over net income is meaningless.</p>
+      <p><b>LTM.</b> Last twelve months, not the last fiscal year. It keeps every company on a current and comparable footing.</p>
+      <p><b>NM.</b> Not meaningful. A multiple with a negative or near-zero denominator is arithmetic without economic content, so it is excluded from the statistics rather than allowed to distort the median.</p>
+      <p><b>Reading the implied range.</b> Peer multiples applied back to the target produce a range, not a price. Low and high are the 25th and 75th percentiles of the peer set; mid is the median.</p>
+      <p><b>The caveat.</b> The output is only as good as the peer set, and choosing peers is judgment. Prune the list.</p>
+    </div>
+  </details>
+
+  <section id="results" hidden>
+    <h2>Comps table</h2>
+    <p class="note" id="units"></p>
+    <div class="tablewrap">
+      <table id="comps">
+        <thead><tr>
+          <th class="l" title="Exchange symbol; the shaded first row is the target being valued.">Ticker</th>
+          <th class="l" title="Company name as reported by the data source.">Company</th>
+          <th title="Last regular-session price per share, in the trading currency.">Share price<small>per share</small></th>
+          <th title="Weighted-average diluted share count from the latest quarter, in millions; an asterisk means basic shares were used because the diluted count was unavailable.">Diluted shares<small>mm</small></th>
+          <th title="What all the shares are worth: share price × diluted shares.">Equity value<small>mm</small></th>
+          <th title="Borrowed money, long-term plus current debt; operating leases are excluded to stay consistent with unadjusted EBITDA.">Total debt<small>mm</small></th>
+          <th title="Cash and equivalents plus short-term investments, deducted in the EV bridge because an acquirer would receive them.">Cash &amp; STI<small>mm</small></th>
+          <th title="Enterprise value: equity value + debt + preferred + noncontrolling interest − cash and short-term investments; what the whole business is worth regardless of financing.">EV<small>mm</small></th>
+          <th title="Revenue over the last twelve months, the sum of the four most recent reported quarters.">LTM revenue<small>mm</small></th>
+          <th title="Operating income plus depreciation and amortization over the last twelve months; a proxy for cash operating profit before financing and tax.">LTM EBITDA<small>mm</small></th>
+          <th title="LTM EBITDA as a percentage of LTM revenue.">EBITDA margin<small>%</small></th>
+          <th title="Enterprise value divided by LTM revenue; useful when earnings are negative or distorted.">EV / Revenue<small>x</small></th>
+          <th title="Enterprise value divided by LTM EBITDA; the workhorse multiple because it is independent of leverage, depreciation policy, and tax.">EV / EBITDA<small>x</small></th>
+          <th title="Enterprise value divided by LTM operating income; like EV/EBITDA but after depreciation, so it penalises capital-heavy businesses.">EV / EBIT<small>x</small></th>
+          <th title="Share price divided by LTM diluted EPS; an equity multiple, pairing price with earnings that belong to shareholders after interest.">P / E<small>x</small></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="grid">
+      <div>
+        <h2>Peer statistics</h2>
+        <p class="note">Across valued peers with a meaningful multiple; NM excluded. Percentiles are Excel PERCENTILE.INC.</p>
+        <div class="tablewrap">
+          <table id="stats">
+            <thead><tr><th class="l">Multiple</th><th>Min</th><th>25th</th><th>Median</th><th>Mean</th><th>75th</th><th>Max</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h2>Implied valuation of <span id="target-label"></span></h2>
+        <p class="note" id="implied-note"></p>
+        <div class="tablewrap">
+          <table id="implied">
+            <thead><tr><th class="l">Methodology</th><th>Low<small>25th pct</small></th><th>Mid<small id="mid-label"></small></th><th>High<small>75th pct</small></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h2>Data quality</h2>
+    <div class="grid">
+      <div><h3>Flags</h3><ul id="flags"></ul></div>
+      <div><h3>Peers not valued</h3><ul id="errors"></ul></div>
+    </div>
+  </section>
+
+  <footer id="footer"></footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // Same origin when served by the FastAPI app; the local backend when the
+  // file is opened directly (which then also needs COMPS_CORS_ORIGINS).
+  var API = location.protocol === "file:" ? "http://127.0.0.1:8000" : location.origin;
+  var MM = 1e6;
+  var peerFlags = [];  // from the last /api/peers call, shown under Data quality
+
+  var fmt1 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  var fmt2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  var MULTIPLES = [
+    ["ev_revenue", "EV / Revenue"],
+    ["ev_ebitda", "EV / EBITDA"],
+    ["ev_ebit", "EV / EBIT"],
+    ["pe", "P / E"]
+  ];
+
+  function $(id) { return document.getElementById(id); }
+
+  // --- Formatting -----------------------------------------------------------
+
+  function signed(v, f, suffix) {
+    var s = f.format(Math.abs(v)) + (suffix || "");
+    return v < 0 ? "(" + s + ")" : s;
+  }
+  var NA = { text: "—", cls: "na", title: "Not reported" };
+
+  function money(raw) { return raw == null ? NA : { text: signed(raw / MM, fmt1) }; }
+  function shares(raw) { return raw == null ? NA : { text: fmt1.format(raw / MM) }; }
+  function price(v) { return v == null ? NA : { text: signed(v, fmt2) }; }
+  function pct(num, den) {
+    if (num == null || den == null) return NA;
+    if (den <= 0) return { text: "NM", cls: "nm", title: "Revenue is negative or zero" };
+    return { text: signed(100 * num / den, fmt1, "%") };
+  }
+  function multiple(m) {
+    if (!m || m.is_nm || m.value == null) return { text: "NM", cls: "nm", title: (m && m.nm_reason) || "Not meaningful" };
+    return { text: signed(m.value, fmt1, "x") };
+  }
+  function stat(v) { return v == null ? NA : { text: signed(v, fmt1, "x") }; }
+  function perShare(v) { return v == null ? NA : { text: signed(v, fmt2) }; }
+
+  // --- DOM helpers ----------------------------------------------------------
+
+  function el(tag, text, cls) {
+    var node = document.createElement(tag);
+    if (text != null) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  }
+  function td(cell, extraCls) {
+    var node = el("td", cell.text, [cell.cls, extraCls].filter(Boolean).join(" "));
+    if (cell.title) node.title = cell.title;
+    return node;
+  }
+  function row(cells) {
+    var tr = document.createElement("tr");
+    cells.forEach(function (c) { tr.appendChild(c); });
+    return tr;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function labelCell(text, n) {
+    var cell = el("td", text, "l");
+    if (n != null) cell.appendChild(el("span", "n = " + n, "n"));
+    return cell;
+  }
+
+  // --- Rendering ------------------------------------------------------------
+
+  function renderComps(r) {
+    var body = $("comps").querySelector("tbody");
+    clear(body);
+    var currency = r.target.reporting_currency || "reporting currency";
+    $("units").textContent = "Amounts in " + currency + " millions except share price; multiples on LTM figures as of the latest filing.";
+
+    [r.target].concat(r.peers).forEach(function (c, i) {
+      var b = c.bridge, ltm = c.ltm, m = c.multiples;
+      var tickerCell = el("td", c.ticker, "l");
+      if (i === 0) tickerCell.appendChild(el("span", "Target", "tag"));
+      var nameCell = el("td", c.name || "—", "l name");
+      nameCell.title = c.name || "";
+      var sharesCell = td(shares(b.diluted_shares));
+      if (b.shares_are_basic_fallback) { sharesCell.title = "Basic shares; diluted count unavailable"; sharesCell.textContent += "*"; }
+      var tr = row([
+        tickerCell,
+        nameCell,
+        td(price(c.share_price)),
+        sharesCell,
+        td(money(b.equity_value)),
+        td(money(b.total_debt)),
+        td(money(b.cash_and_equivalents + b.short_term_investments)),
+        td(money(b.enterprise_value)),
+        td(money(ltm.revenue)),
+        td(money(ltm.ebitda)),
+        td(pct(ltm.ebitda, ltm.revenue)),
+        td(multiple(m.ev_revenue)),
+        td(multiple(m.ev_ebitda)),
+        td(multiple(m.ev_ebit)),
+        td(multiple(m.pe))
+      ]);
+      if (i === 0) tr.className = "target";
+      body.appendChild(tr);
+    });
+  }
+
+  function renderStats(stats) {
+    var body = $("stats").querySelector("tbody");
+    clear(body);
+    MULTIPLES.forEach(function (pair) {
+      var s = stats[pair[0]];
+      body.appendChild(row([
+        labelCell(pair[1], s.n),
+        td(stat(s.min)), td(stat(s.p25)), td(stat(s.median)), td(stat(s.mean)), td(stat(s.p75)), td(stat(s.max))
+      ]));
+    });
+  }
+
+  function renderImplied(r) {
+    var body = $("implied").querySelector("tbody");
+    clear(body);
+    var t = r.target;
+    $("target-label").textContent = t.ticker;
+    $("mid-label").textContent = "peer " + r.implied.mid_basis;
+    $("implied-note").textContent = "Implied " + (t.reporting_currency || "") + " per share, from peer multiples applied to " + t.ticker +
+      "'s LTM figures through the EV bridge. Current share price " + fmt2.format(t.share_price) + " (" + t.price_as_of + ").";
+    MULTIPLES.forEach(function (pair) {
+      var im = r.implied[pair[0]];
+      var cells = [labelCell(pair[1], im.n)];
+      if (im.is_nm) {
+        var nm = td({ text: "NM", cls: "nm", title: im.nm_reason || "Not meaningful" });
+        nm.colSpan = 3;
+        nm.style.textAlign = "center";
+        cells.push(nm);
+      } else {
+        cells.push(td(perShare(im.low)), td(perShare(im.mid)), td(perShare(im.high)));
+      }
+      body.appendChild(row(cells));
+    });
+  }
+
+  function flagItem(ticker, f, cls) {
+    var li = el("li", null, cls);
+    li.appendChild(el("b", ticker));
+    li.appendChild(el("span", f.code, "code"));
+    li.appendChild(document.createTextNode(f.message));
+    return li;
+  }
+
+  function renderQuality(r) {
+    var flags = $("flags"), errors = $("errors");
+    clear(flags); clear(errors);
+    peerFlags.forEach(function (f) { flags.appendChild(flagItem(r.target.ticker, f, "flag")); });
+    [r.target].concat(r.peers).forEach(function (c) {
+      (c.flags || []).forEach(function (f) { flags.appendChild(flagItem(c.ticker, f, "flag")); });
+    });
+    if (!flags.firstChild) flags.appendChild(el("li", "No data-quality flags.", "none"));
+
+    Object.keys(r.errors || {}).forEach(function (ticker) {
+      errors.appendChild(flagItem(ticker, r.errors[ticker], "err"));
+    });
+    if (!errors.firstChild) errors.appendChild(el("li", "Every requested peer was valued.", "none"));
+  }
+
+  function render(r) {
+    renderComps(r);
+    renderStats(r.statistics);
+    renderImplied(r);
+    renderQuality(r);
+    $("results").hidden = false;
+  }
+
+  // --- API ------------------------------------------------------------------
+
+  function api(path, options) {
+    return fetch(API + path, options).catch(function (e) {
+      throw new Error("Could not reach the API at " + API + " (" + e.message + ").");
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (body) {
+        if (res.ok) return body;
+        var msg = body && body.message ? body.code + ": " + body.message : res.status + " " + res.statusText;
+        throw new Error(msg);
+      });
+    });
+  }
+
+  function suggestPeers(ticker) {
+    return api("/api/peers/" + encodeURIComponent(ticker));
+  }
+
+  function runComps(target, peers) {
+    return api("/api/comps", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: target, peers: peers, mid_basis: "median" })
+    });
+  }
+
+  // --- Controller -----------------------------------------------------------
+
+  function parsePeers(text) {
+    var seen = {};
+    return text.split(/[,\s]+/).map(function (s) { return s.trim().toUpperCase(); })
+      .filter(function (s) { return s && !seen[s] && (seen[s] = true); });
+  }
+  function status(text) { $("status").textContent = text; }
+  function showError(text) { $("error").textContent = text; $("error").hidden = false; }
+  function hideError() { $("error").hidden = true; }
+  function setBusy(busy) { $("run").disabled = busy; $("rerun").disabled = busy; }
+
+  function run(suggest) {
+    var target = $("ticker").value.trim().toUpperCase();
+    if (!target) return;
+    setBusy(true);
+    hideError();
+    var peers = parsePeers($("peers").value);
+    var step = Promise.resolve();
+    if (suggest) {
+      status("Fetching suggested peers for " + target + "…");
+      step = suggestPeers(target).then(function (suggestion) {
+        peers = suggestion.peers.map(function (p) { return p.ticker; });
+        peerFlags = suggestion.flags || [];
+        $("peers").value = peers.join(", ");
+        if (!peers.length) {
+          var why = peerFlags.length ? peerFlags[0].message + " " : "";
+          throw new Error("No peers suggested for " + target + ". " + why + "Enter peers and use “Run with listed peers”.");
+        }
+      });
+    } else {
+      peerFlags = [];  // the listed peers are the user's own set now
+    }
+    step.then(function () {
+      if (!peers.length) throw new Error("Enter at least one peer ticker.");
+      status("Running comps for " + target + " against " + peers.length + " peer" + (peers.length === 1 ? "" : "s") + "…");
+      return runComps(target, peers);
+    }).then(function (result) {
+      render(result);
+      var failed = Object.keys(result.errors || {}).length;
+      status("As of " + result.as_of + ". " + result.peers.length + " of " + peers.length + " peers valued" +
+        (failed ? "; " + failed + " not valued, see Data quality." : ".") +
+        (peerFlags.length ? " Suggested peer set is thin; see Data quality." : ""));
+    }).catch(function (err) {
+      status("");
+      $("results").hidden = true;  // a stale table under an error misleads
+      showError(err.message);
+    }).then(function () { setBusy(false); });
+  }
+
+  $("form").addEventListener("submit", function (e) { e.preventDefault(); run(true); });
+  $("rerun").addEventListener("click", function () { run(false); });
+  $("footer").textContent = "API: " + API + " · OpenAPI docs at " + API + "/docs";
+})();
+</script>
+</body>
+</html>

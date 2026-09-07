@@ -2,8 +2,8 @@
 contract, the market-cap band, the pure select_peers rule, and the
 provider plumbing (base defaults, fixture provider, cache delegation).
 
-The rule is deliberately mechanical: same industry (or sector), market
-cap within 0.25x-4.0x of the target, same currencies. The banker still
+The rule is deliberately mechanical: same industry, market cap within
+0.33x-3.0x of the target, same currencies. The banker still
 picks the final set; this only proposes candidates.
 """
 
@@ -49,12 +49,12 @@ HD = profile("HD", 320 * B)
 # --- Market-cap band ----------------------------------------------------
 
 
-def test_band_is_quarter_to_four_times_target():
+def test_band_is_a_third_to_three_times_target():
     band = market_cap_band(100 * B)
-    assert band.low == 25 * B
-    assert band.high == 400 * B
-    assert band.low_multiple == MARKET_CAP_LOW_MULTIPLE == 0.25
-    assert band.high_multiple == MARKET_CAP_HIGH_MULTIPLE == 4.0
+    assert band.low == pytest.approx(33 * B)
+    assert band.high == 300 * B
+    assert band.low_multiple == MARKET_CAP_LOW_MULTIPLE == 0.33
+    assert band.high_multiple == MARKET_CAP_HIGH_MULTIPLE == 3.0
 
 
 def test_band_accepts_custom_multiples():
@@ -76,11 +76,11 @@ def test_keeps_same_industry_inside_band_ordered_by_size_similarity():
     # scale, so a mid-cap's list starts with names its own size rather
     # than the largest companies the band admits.
     candidates = [
-        profile("FND", 5 * B),        # too small (< 80B)
+        profile("FND", 5 * B),        # too small (< 105.6B)
         profile("LOW", 115 * B),      # ratio 0.36
-        profile("BIG", 1_000 * B),    # ratio 3.1
-        profile("HUGE", 2_000 * B),   # too big (> 1,280B)
-        profile("MID", 90 * B),       # ratio 0.28
+        profile("BIG", 900 * B),      # ratio 2.8
+        profile("HUGE", 1_000 * B),   # too big (> 960B)
+        profile("MID", 110 * B),      # ratio 0.34
         profile("NEAR", 400 * B),     # ratio 1.25
     ]
     peers = select_peers(HD, candidates, basis=MatchBasis.INDUSTRY)
@@ -88,7 +88,10 @@ def test_keeps_same_industry_inside_band_ordered_by_size_similarity():
 
 
 def test_band_edges_are_inclusive():
-    candidates = [profile("LO", 80 * B), profile("HI", 1_280 * B)]
+    candidates = [
+        profile("LO", HD.market_cap * MARKET_CAP_LOW_MULTIPLE),
+        profile("HI", HD.market_cap * MARKET_CAP_HIGH_MULTIPLE),
+    ]
     peers = select_peers(HD, candidates, basis=MatchBasis.INDUSTRY)
     assert {p.ticker for p in peers} == {"LO", "HI"}
 
@@ -102,8 +105,8 @@ def test_excludes_target_itself_and_duplicates():
 def test_dual_share_classes_collapse_to_the_larger_listing():
     # LEN and LEN-B are one company; two rows would double-count it in
     # the median. Keep the listing with the larger market cap.
-    lennar = profile("LEN", 100 * B).model_copy(update={"name": "Lennar Corporation"})
-    lennar_b = profile("LEN-B", 99 * B).model_copy(update={"name": "Lennar Corporation"})
+    lennar = profile("LEN", 110 * B).model_copy(update={"name": "Lennar Corporation"})
+    lennar_b = profile("LEN-B", 109 * B).model_copy(update={"name": "Lennar Corporation"})
     other = profile("LOW", 115 * B)
     peers = select_peers(HD, [lennar_b, other, lennar], basis=MatchBasis.INDUSTRY)
     assert [p.ticker for p in peers] == ["LOW", "LEN"]
@@ -123,8 +126,8 @@ def test_targets_other_share_class_is_not_its_own_peer():
 
 
 def test_unnamed_candidates_are_not_collapsed_together():
-    a = profile("AAA", 100 * B).model_copy(update={"name": None})
-    b = profile("BBB", 90 * B).model_copy(update={"name": None})
+    a = profile("AAA", 150 * B).model_copy(update={"name": None})
+    b = profile("BBB", 140 * B).model_copy(update={"name": None})
     peers = select_peers(HD, [a, b], basis=MatchBasis.INDUSTRY)
     assert [p.ticker for p in peers] == ["AAA", "BBB"]
 
@@ -136,8 +139,8 @@ def test_industry_basis_drops_other_industries_even_in_sector():
 
 def test_sector_basis_accepts_any_industry_in_sector():
     candidates = [
-        profile("TSCO", 100 * B, industry="Specialty Retail"),
-        profile("XOM", 100 * B, industry="Oil & Gas Integrated", sector="Energy"),
+        profile("TSCO", 150 * B, industry="Specialty Retail"),
+        profile("XOM", 150 * B, industry="Oil & Gas Integrated", sector="Energy"),
     ]
     peers = select_peers(HD, candidates, basis=MatchBasis.SECTOR)
     assert [p.ticker for p in peers] == ["TSCO"]
