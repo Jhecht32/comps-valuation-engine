@@ -1,0 +1,116 @@
+"""FastAPI application factory.
+
+    uvicorn app.main:app --reload
+
+create_app takes the inner market data provider (yfinance by default)
+and a clock; at startup the lifespan wraps the provider in CachedProvider
+so every request shares one TTL cache, and exposes it on app.state.
+Tests pass a fixture provider and a fixed date.
+"""
+
+import os
+from contextlib import asynccontextmanager
+from datetime import date
+from typing import Callable
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.api import router
+from app.data import CachedProvider, MarketDataProvider
+from app.data.provider import (
+    CurrencyMismatchError,
+    MarketDataError,
+    PeerDiscoveryUnavailableError,
+    TickerNotFoundError,
+)
+from app.services import ErrorCode, InsufficientDataError, TickerError, ticker_error
+
+DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+# Most specific first; Starlette matches handlers by the exception's MRO.
+_STATUS_BY_ERROR: list[tuple[type[Exception], int]] = [
+    (TickerNotFoundError, 404),
+    (CurrencyMismatchError, 422),
+    (InsufficientDataError, 422),
+    (PeerDiscoveryUnavailableError, 501),
+    (MarketDataError, 502),
+]
+
+
+def _default_provider() -> MarketDataProvider:
+    from app.data.yfinance_provider import YFinanceProvider  # pulls in pandas
+
+    return YFinanceProvider()
+
+
+def _cors_origins() -> list[str]:
+    raw = os.environ.get("COMPS_CORS_ORIGINS")
+    return [o.strip() for o in raw.split(",") if o.strip()] if raw else DEFAULT_CORS_ORIGINS
+
+
+def _validation_message(exc: RequestValidationError) -> str:
+    parts = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ()) if p != "body")
+        parts.append(f"{loc}: {err.get('msg')}" if loc else str(err.get("msg")))
+    return "; ".join(parts) or "invalid request"
+
+
+def _register_error_handlers(app: FastAPI) -> None:
+    def make_handler(status: int):
+        async def handler(request: Request, exc: Exception) -> JSONResponse:
+            ticker = getattr(exc, "ticker", None) or request.path_params.get("ticker")
+            body = ticker_error(ticker.strip().upper() if ticker else None, exc)
+            return JSONResponse(status_code=status, content=body.model_dump(mode="json"))
+
+        return handler
+
+    for error_type, status in _STATUS_BY_ERROR:
+        app.add_exception_handler(error_type, make_handler(status))
+
+    # Request validation gets the same body shape as every other error;
+    # the routes declare 422 as TickerError and this keeps that true.
+    async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        body = TickerError(ticker=None, code=ErrorCode.INVALID_REQUEST, message=_validation_message(exc))
+        return JSONResponse(status_code=422, content=body.model_dump(mode="json"))
+
+    app.add_exception_handler(RequestValidationError, validation_handler)
+
+
+def create_app(
+    *,
+    provider: MarketDataProvider | None = None,
+    today: Callable[[], date] = date.today,
+    cors_origins: list[str] | None = None,
+) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # The default provider is built here, not at import, so importing
+        # app.main (tests, tooling) does not construct a yfinance client.
+        inner = provider if provider is not None else _default_provider()
+        app.state.inner_provider = inner
+        app.state.provider = CachedProvider(inner)
+        yield
+
+    app = FastAPI(
+        title="Comps Valuation Engine",
+        version="0.1.0",
+        description="Public comparable companies analysis: EV bridge, LTM multiples, implied valuation.",
+        lifespan=lifespan,
+    )
+    app.state.today = today
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins if cors_origins is not None else _cors_origins(),
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
+    )
+    app.include_router(router)
+    _register_error_handlers(app)
+    return app
+
+
+app = create_app()

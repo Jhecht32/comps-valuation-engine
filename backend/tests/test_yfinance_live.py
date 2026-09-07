@@ -136,3 +136,31 @@ def test_adr_is_rejected_by_the_currency_guard():
 def test_unknown_ticker_is_not_found():
     with pytest.raises(TickerNotFoundError):
         YFinanceProvider().get_company("NOPE1234XYZ")
+
+
+# --- Peer discovery ---------------------------------------------------------
+
+
+def test_live_profile_and_screen_find_lowes_for_home_depot():
+    """Pins the two assumptions the peer endpoint rests on: Ticker.info
+    classifies HD, and screener quotes carry financialCurrency (without
+    it select_peers drops every candidate and the endpoint returns an
+    empty list with no error)."""
+    provider = YFinanceProvider()
+    hd = provider.get_profile("HD")
+    assert hd.sector == "Consumer Cyclical"
+    assert hd.industry == "Home Improvement Retail"
+    assert hd.market_cap and hd.market_cap > 100e9
+    assert (hd.price_currency, hd.reporting_currency) == ("USD", "USD")
+
+    found = provider.screen_peers(
+        sector=hd.sector,
+        industry=hd.industry,
+        market_cap_min=hd.market_cap * 0.25,
+        market_cap_max=hd.market_cap * 4.0,
+    )
+    by_ticker = {p.ticker: p for p in found}
+    assert "LOW" in by_ticker, sorted(by_ticker)
+    assert all(p.reporting_currency is not None for p in found), [p.ticker for p in found if p.reporting_currency is None]
+    assert all(p.price_currency == "USD" for p in found)
+    assert by_ticker["LOW"].industry == "Home Improvement Retail"

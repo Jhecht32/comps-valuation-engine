@@ -1,0 +1,114 @@
+{
+  "ticker": "LOW",
+  "name": "Lowe's Companies, Inc.",
+  "price_currency": "USD",
+  "reporting_currency": "USD",
+  "share_price": 204.45,
+  "price_as_of": "2026-09-04",
+  "diluted_shares": 560000000.0,
+  "basic_shares": 559000000.0,
+  "shares_as_of": "2026-07-31",
+  "balance_sheet": {
+    "as_of": "2026-07-31",
+    "total_debt": 37556000000.0,
+    "cash_and_equivalents": 3172000000.0,
+    "short_term_investments": null,
+    "preferred_equity": 0.0,
+    "noncontrolling_interest": 0.0
+  },
+  "quarters": [
+    {
+      "revenue": 25956000000.0,
+      "gross_profit": 8577000000.0,
+      "ebit": 3549000000.0,
+      "net_income": 2399000000.0,
+      "d_and_a": 648000000.0,
+      "preferred_dividends": 7000000.0,
+      "nci_income": 0.0,
+      "period_end": "2026-07-31"
+    },
+    {
+      "revenue": 23078000000.0,
+      "gross_profit": 7543000000.0,
+      "ebit": 2554000000.0,
+      "net_income": 1628000000.0,
+      "d_and_a": 644000000.0,
+      "preferred_dividends": 5000000.0,
+      "nci_income": 0.0,
+      "period_end": "2026-04-30"
+    },
+    {
+      "revenue": 20585000000.0,
+      "gross_profit": 6681000000.0,
+      "ebit": 1708000000.0,
+      "net_income": 1000000000.0,
+      "d_and_a": 637000000.0,
+      "preferred_dividends": 3000000.0,
+      "nci_income": 0.0,
+      "period_end": "2026-01-31"
+    },
+    {
+      "revenue": 20813000000.0,
+      "gross_profit": 7116000000.0,
+      "ebit": 2481000000.0,
+      "net_income": 1616000000.0,
+      "d_and_a": 535000000.0,
+      "preferred_dividends": 4000000.0,
+      "nci_income": 0.0,
+      "period_end": "2025-10-31"
+    },
+    {
+      "revenue": 23959000000.0,
+      "gross_profit": 8101000000.0,
+      "ebit": 3469000000.0,
+      "net_income": 2398000000.0,
+      "d_and_a": 515000000.0,
+      "preferred_dividends": 7000000.0,
+      "nci_income": 0.0,
+      "period_end": "2025-07-31"
+    }
+  ],
+  "fiscal_years": [
+    {
+      "revenue": 86286000000.0,
+      "gross_profit": 28885000000.0,
+      "ebit": 10153000000.0,
+      "net_income": 6654000000.0,
+      "d_and_a": 2194000000.0,
+      "preferred_dividends": 18000000.0,
+      "nci_income": 0.0,
+      "period_end": "2026-01-31"
+    },
+    {
+      "revenue": 83674000000.0,
+      "gross_profit": 27877000000.0,
+      "ebit": 10466000000.0,
+      "net_income": 6957000000.0,
+      "d_and_a": 1972000000.0,
+      "preferred_dividends": 17000000.0,
+      "nci_income": 0.0,
+      "period_end": "2025-01-31"
+    },
+    {
+      "revenue": 86377000000.0,
+      "gross_profit": 28844000000.0,
+      "ebit": 11557000000.0,
+      "net_income": 7726000000.0,
+      "d_and_a": 1923000000.0,
+      "preferred_dividends": 20000000.0,
+      "nci_income": 0.0,
+      "period_end": "2024-01-31"
+    },
+    {
+      "revenue": 97059000000.0,
+      "gross_profit": 32257000000.0,
+      "ebit": 10159000000.0,
+      "net_income": 6437000000.0,
+      "d_and_a": 1981000000.0,
+      "preferred_dividends": 21000000.0,
+      "nci_income": 0.0,
+      "period_end": "2023-01-31"
+    }
+  ],
+  "source": "yfinance"
+}

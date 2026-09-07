@@ -27,6 +27,12 @@ cheap price-only path, and get_companies for a multi-ticker fetch). The
 public get_company / get_companies entry points apply source-independent
 guards on top. Implementations are synchronous; the API layer runs them
 in a worker thread if it needs to stay non-blocking.
+
+Peer discovery (get_profile, screen_peers) is a separate, optional
+capability: a snapshot carries no sector or market cap, and not every
+source can screen a universe. The defaults raise
+PeerDiscoveryUnavailableError; the selection rule itself lives in
+app.data.peers so every source is filtered the same way.
 """
 
 from abc import ABC, abstractmethod
@@ -79,6 +85,16 @@ class CurrencyMismatchError(MarketDataError):
         super().__init__(f"{ticker}: {detail}")
 
 
+class PeerDiscoveryUnavailableError(MarketDataError):
+    """This source cannot look up sector/industry profiles or screen for
+    peers; the comps run itself is unaffected."""
+
+    def __init__(self, ticker: str | None = None):
+        self.ticker = ticker
+        what = f"for {ticker!r}" if ticker else "by this source"
+        super().__init__(f"Peer discovery is not available {what}")
+
+
 # --- Quote ----------------------------------------------------------------
 
 
@@ -89,6 +105,25 @@ class Quote(BaseModel):
     share_price: float
     price_as_of: date
     price_currency: str | None = None
+
+
+# --- Profile (peer discovery input) ---------------------------------------
+
+
+class CompanyProfile(BaseModel):
+    """The classification data peer screening runs on. Market cap is the
+    source's own figure in raw currency units; it sizes the peer band and
+    is never used in a valuation. Currencies follow CompanySnapshot so
+    candidates the currency guard would reject can be dropped up front."""
+
+    ticker: str
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    market_cap: float | None = None
+    price_currency: str | None = None
+    reporting_currency: str | None = None
+    exchange: str | None = None
 
 
 # --- Currency guards ------------------------------------------------------
@@ -189,3 +224,27 @@ class MarketDataProvider(ABC):
     def fetch_company(self, ticker: str) -> CompanySnapshot:
         """Source-specific fetch and map. Called by get_company; do not
         call directly, it bypasses the guards."""
+
+    # --- Peer discovery (optional) -----------------------------------
+
+    def get_profile(self, ticker: str) -> CompanyProfile:
+        """Sector, industry, and market cap for one ticker. Raises
+        TickerNotFoundError for an unknown ticker and
+        PeerDiscoveryUnavailableError when the source cannot classify."""
+        raise PeerDiscoveryUnavailableError(ticker)
+
+    def screen_peers(
+        self,
+        *,
+        sector: str | None,
+        industry: str | None,
+        market_cap_min: float,
+        market_cap_max: float,
+        limit: int = 50,
+    ) -> list[CompanyProfile]:
+        """Candidates in one industry (or, when industry is None, one
+        sector) with market cap inside [market_cap_min, market_cap_max].
+        The source applies whatever it can; app.data.peers.select_peers
+        re-applies every rule, so a coarse screen is fine. The target may
+        be among the results."""
+        raise PeerDiscoveryUnavailableError()

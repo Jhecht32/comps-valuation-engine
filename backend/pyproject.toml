@@ -4,12 +4,15 @@ version = "0.1.0"
 description = "Public comparable companies analysis engine"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115",
     "pydantic>=2.5",
+    "uvicorn>=0.30",
     "yfinance>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx2>=2.0",
     "pytest>=8.0",
 ]
 

@@ -18,6 +18,7 @@ from datetime import timedelta
 from typing import Callable
 
 from app.data.provider import (
+    CompanyProfile,
     MarketDataError,
     MarketDataProvider,
     Quote,
@@ -114,6 +115,29 @@ class CachedProvider(MarketDataProvider):
 
     def clear(self) -> None:
         self._entries.clear()
+
+    # Peer discovery passes straight through: profiles carry a live
+    # market cap and screens are one cheap request, so nothing to cache.
+
+    def get_profile(self, ticker: str) -> CompanyProfile:
+        return self._inner.get_profile(_key(ticker))
+
+    def screen_peers(
+        self,
+        *,
+        sector: str | None,
+        industry: str | None,
+        market_cap_min: float,
+        market_cap_max: float,
+        limit: int = 50,
+    ) -> list[CompanyProfile]:
+        return self._inner.screen_peers(
+            sector=sector,
+            industry=industry,
+            market_cap_min=market_cap_min,
+            market_cap_max=market_cap_max,
+            limit=limit,
+        )
 
     # --- internals ----------------------------------------------------
 

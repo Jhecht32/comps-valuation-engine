@@ -23,6 +23,7 @@ yfinance); app.data does not re-export it so the fixture and cache
 layers stay light.
 """
 
+import math
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable
@@ -30,6 +31,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from app.data.provider import (
+    CompanyProfile,
     MarketDataError,
     MarketDataProvider,
     Quote,
@@ -307,6 +309,68 @@ def map_company(raw: RawCompany) -> CompanySnapshot:
     )
 
 
+# --- Profile and screener ---------------------------------------------------
+
+
+def _float_or_none(value: Any) -> float | None:
+    """A numeric field that Yahoo may leave absent, NaN, or as a
+    placeholder string; anything unusable is None, never an exception."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(number) else number
+
+
+def map_profile(ticker: str, info: dict[str, Any] | None) -> CompanyProfile:
+    """Sector, industry, and market cap from Ticker.info. marketCap is
+    Yahoo's own figure (price x shares outstanding); it sizes the peer
+    band only and never enters a valuation."""
+    info = info or {}
+    return CompanyProfile(
+        ticker=ticker.strip().upper(),
+        name=info.get("longName") or info.get("shortName"),
+        sector=info.get("sector"),
+        industry=info.get("industry"),
+        market_cap=_float_or_none(info.get("marketCap")),
+        price_currency=info.get("currency"),
+        reporting_currency=info.get("financialCurrency"),
+        exchange=info.get("exchange"),
+    )
+
+
+def map_screen_quote(quote: dict[str, Any], *, sector: str | None, industry: str | None) -> CompanyProfile:
+    """One screener result. The quote carries no sector or industry of
+    its own, so the values the query filtered on are stamped in."""
+    return CompanyProfile(
+        ticker=str(quote.get("symbol", "")).strip().upper(),
+        name=quote.get("longName") or quote.get("shortName") or quote.get("displayName"),
+        sector=sector,
+        industry=industry,
+        market_cap=_float_or_none(quote.get("marketCap")),
+        price_currency=quote.get("currency"),
+        reporting_currency=quote.get("financialCurrency"),
+        exchange=quote.get("exchange"),
+    )
+
+
+def _default_screen(query, **kwargs):
+    import yfinance as yf  # imported lazily so fakes need no yfinance
+
+    return yf.screen(query, **kwargs)
+
+
+_SCREEN_MAX_SIZE = 250  # Yahoo's hard cap per screener request
+
+# Yahoo exchange codes for NYSE, Nasdaq (GS/GM/CM), NYSE American, NYSE
+# Arca, and BATS. Region 'us' alone also returns OTC (PNK/OQX/OQB) rows,
+# which are mostly foreign ordinaries and ADR look-alikes: illiquid,
+# reporting in another currency, and duplicating a home listing.
+_PRIMARY_US_EXCHANGES = ("NYQ", "NMS", "NGM", "NCM", "ASE", "PCX", "BTS")
+
+
 # --- Provider ---------------------------------------------------------------
 
 
@@ -331,8 +395,14 @@ def _default_ticker_factory(symbol: str):
 
 
 class YFinanceProvider(MarketDataProvider):
-    def __init__(self, ticker_factory: Callable[[str], Any] | None = None):
+    def __init__(
+        self,
+        ticker_factory: Callable[[str], Any] | None = None,
+        *,
+        screen_fn: Callable[..., dict[str, Any]] | None = None,
+    ):
         self._ticker_factory = ticker_factory or _default_ticker_factory
+        self._screen = screen_fn or _default_screen
 
     def fetch_company(self, ticker: str) -> CompanySnapshot:
         symbol = ticker.strip().upper()
@@ -366,3 +436,61 @@ class YFinanceProvider(MarketDataProvider):
         if _empty(history):
             raise TickerNotFoundError(symbol)
         return map_quote(symbol, history, metadata)
+
+    # --- Peer discovery -------------------------------------------------
+
+    def get_profile(self, ticker: str) -> CompanyProfile:
+        symbol = ticker.strip().upper()
+        t = self._ticker_factory(symbol)
+        try:
+            info = t.info or {}
+        except Exception as exc:
+            raise MarketDataError(f"{symbol}: yfinance request failed: {exc}") from exc
+        # An unknown symbol comes back as a near-empty dict (just
+        # trailingPegRatio) rather than an exception.
+        if not info.get("longName") and not info.get("shortName"):
+            raise TickerNotFoundError(symbol)
+        return map_profile(symbol, info)
+
+    def screen_peers(
+        self,
+        *,
+        sector: str | None,
+        industry: str | None,
+        market_cap_min: float,
+        market_cap_max: float,
+        limit: int = 50,
+    ) -> list[CompanyProfile]:
+        """Yahoo's equity screener, restricted to primary US exchanges.
+        Industry is the finer filter and wins when given. Anything that
+        slips through (a US-listed company reporting in another currency)
+        is dropped by select_peers."""
+        from yfinance import EquityQuery  # lazy: fakes need no yfinance
+
+        if industry is None and sector is None:
+            raise ValueError("screen_peers needs a sector or an industry")
+        try:
+            clauses = [
+                EquityQuery("eq", ["region", "us"]),
+                EquityQuery("is-in", ["exchange", *_PRIMARY_US_EXCHANGES]),
+                EquityQuery("btwn", ["intradaymarketcap", market_cap_min, market_cap_max]),
+                EquityQuery("eq", ["industry", industry] if industry is not None else ["sector", sector]),
+            ]
+            query = EquityQuery("and", clauses)
+        except ValueError as exc:  # a sector/industry name Yahoo does not know
+            raise MarketDataError(f"screener rejected the query: {exc}") from exc
+        try:
+            result = self._screen(
+                query,
+                size=min(limit, _SCREEN_MAX_SIZE),
+                sortField="intradaymarketcap",
+                sortAsc=False,
+            )
+        except Exception as exc:
+            raise MarketDataError(f"yfinance screener request failed: {exc}") from exc
+        quotes = (result or {}).get("quotes") or []
+        return [
+            map_screen_quote(q, sector=sector, industry=industry)
+            for q in quotes
+            if q.get("quoteType") == "EQUITY" and q.get("symbol")
+        ]

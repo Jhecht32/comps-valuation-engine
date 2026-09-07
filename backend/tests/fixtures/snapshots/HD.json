@@ -1,0 +1,114 @@
+{
+  "ticker": "HD",
+  "name": "The Home Depot, Inc.",
+  "price_currency": "USD",
+  "reporting_currency": "USD",
+  "share_price": 321.05,
+  "price_as_of": "2026-09-04",
+  "diluted_shares": 996000000.0,
+  "basic_shares": 994000000.0,
+  "shares_as_of": "2026-07-31",
+  "balance_sheet": {
+    "as_of": "2026-07-31",
+    "total_debt": 52896000000.0,
+    "cash_and_equivalents": 2085000000.0,
+    "short_term_investments": null,
+    "preferred_equity": 0.0,
+    "noncontrolling_interest": 0.0
+  },
+  "quarters": [
+    {
+      "revenue": 47861000000.0,
+      "gross_profit": 16115000000.0,
+      "ebit": 6839000000.0,
+      "net_income": 4766000000.0,
+      "d_and_a": 1107000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2026-07-31"
+    },
+    {
+      "revenue": 41765000000.0,
+      "gross_profit": 13781000000.0,
+      "ebit": 4981000000.0,
+      "net_income": 3289000000.0,
+      "d_and_a": 1081000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2026-04-30"
+    },
+    {
+      "revenue": 38198000000.0,
+      "gross_profit": 12466000000.0,
+      "ebit": 3849000000.0,
+      "net_income": 2571000000.0,
+      "d_and_a": 1079000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2026-01-31"
+    },
+    {
+      "revenue": 41352000000.0,
+      "gross_profit": 13815000000.0,
+      "ebit": 5353000000.0,
+      "net_income": 3601000000.0,
+      "d_and_a": 1044000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-10-31"
+    },
+    {
+      "revenue": 45277000000.0,
+      "gross_profit": 15125000000.0,
+      "ebit": 6555000000.0,
+      "net_income": 4551000000.0,
+      "d_and_a": 1004000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-07-31"
+    }
+  ],
+  "fiscal_years": [
+    {
+      "revenue": 164683000000.0,
+      "gross_profit": 54865000000.0,
+      "ebit": 20890000000.0,
+      "net_income": 14156000000.0,
+      "d_and_a": 4121000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2026-01-31"
+    },
+    {
+      "revenue": 159514000000.0,
+      "gross_profit": 53308000000.0,
+      "ebit": 21526000000.0,
+      "net_income": 14806000000.0,
+      "d_and_a": 3761000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-01-31"
+    },
+    {
+      "revenue": 152669000000.0,
+      "gross_profit": 50960000000.0,
+      "ebit": 21689000000.0,
+      "net_income": 15143000000.0,
+      "d_and_a": 3247000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2024-01-31"
+    },
+    {
+      "revenue": 157403000000.0,
+      "gross_profit": 52778000000.0,
+      "ebit": 24039000000.0,
+      "net_income": 17105000000.0,
+      "d_and_a": 2975000000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2023-01-31"
+    }
+  ],
+  "source": "yfinance"
+}

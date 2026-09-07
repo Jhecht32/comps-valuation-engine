@@ -13,7 +13,12 @@ this one.
 from datetime import date
 from typing import Mapping
 
-from app.data.provider import MarketDataProvider, TickerNotFoundError
+from app.data.provider import (
+    CompanyProfile,
+    MarketDataProvider,
+    PeerDiscoveryUnavailableError,
+    TickerNotFoundError,
+)
 from app.valuation.models import (
     AnnualFinancials,
     BalanceSheetItems,
@@ -95,8 +100,18 @@ DEFAULT_FIXTURES: dict[str, CompanySnapshot] = {"HD": HOME_DEPOT}
 
 
 class FixtureProvider(MarketDataProvider):
-    def __init__(self, snapshots: Mapping[str, CompanySnapshot] | None = None):
+    """Serves canned snapshots and, when given, canned profiles. Without
+    profiles, peer discovery reports itself unavailable rather than
+    returning an empty universe, so a misconfigured test fails loudly."""
+
+    def __init__(
+        self,
+        snapshots: Mapping[str, CompanySnapshot] | None = None,
+        *,
+        profiles: Mapping[str, CompanyProfile] | None = None,
+    ):
         self._snapshots = dict(DEFAULT_FIXTURES if snapshots is None else snapshots)
+        self._profiles = None if profiles is None else dict(profiles)
 
     def fetch_company(self, ticker: str) -> CompanySnapshot:
         key = ticker.strip().upper()
@@ -105,3 +120,36 @@ class FixtureProvider(MarketDataProvider):
         except KeyError:
             raise TickerNotFoundError(ticker.strip()) from None
         return snapshot.model_copy(deep=True)
+
+    def get_profile(self, ticker: str) -> CompanyProfile:
+        if self._profiles is None:
+            raise PeerDiscoveryUnavailableError(ticker)
+        key = ticker.strip().upper()
+        try:
+            return self._profiles[key].model_copy()
+        except KeyError:
+            raise TickerNotFoundError(ticker.strip()) from None
+
+    def screen_peers(
+        self,
+        *,
+        sector: str | None,
+        industry: str | None,
+        market_cap_min: float,
+        market_cap_max: float,
+        limit: int = 50,
+    ) -> list[CompanyProfile]:
+        if self._profiles is None:
+            raise PeerDiscoveryUnavailableError()
+        if industry is not None:
+            matches = (p for p in self._profiles.values() if p.industry == industry)
+        elif sector is not None:
+            matches = (p for p in self._profiles.values() if p.sector == sector)
+        else:
+            raise ValueError("screen_peers needs a sector or an industry")
+        found = [
+            p.model_copy()
+            for p in matches
+            if p.market_cap is not None and market_cap_min <= p.market_cap <= market_cap_max
+        ]
+        return found[:limit]

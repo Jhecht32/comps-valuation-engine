@@ -1,0 +1,12 @@
+{
+  "ticker": "HD",
+  "longName": "The Home Depot, Inc.",
+  "sector": "Consumer Cyclical",
+  "industry": "Home Improvement Retail",
+  "marketCap": 320308248576,
+  "currency": "USD",
+  "financialCurrency": "USD",
+  "exchange": "NYQ",
+  "fullExchangeName": "NYSE",
+  "quoteType": "EQUITY"
+}

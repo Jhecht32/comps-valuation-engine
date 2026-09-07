@@ -1,0 +1,12 @@
+{
+  "ticker": "TSCO",
+  "longName": "Tractor Supply Company",
+  "sector": "Consumer Cyclical",
+  "industry": "Specialty Retail",
+  "marketCap": 18231195648,
+  "currency": "USD",
+  "financialCurrency": "USD",
+  "exchange": "NMS",
+  "fullExchangeName": "NasdaqGS",
+  "quoteType": "EQUITY"
+}

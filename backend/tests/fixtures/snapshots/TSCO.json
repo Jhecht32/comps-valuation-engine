@@ -1,0 +1,114 @@
+{
+  "ticker": "TSCO",
+  "name": "Tractor Supply Company",
+  "price_currency": "USD",
+  "reporting_currency": "USD",
+  "share_price": 34.99,
+  "price_as_of": "2026-09-04",
+  "diluted_shares": 524615000.0,
+  "basic_shares": 523729000.0,
+  "shares_as_of": "2026-06-30",
+  "balance_sheet": {
+    "as_of": "2026-06-30",
+    "total_debt": 2153800000.0,
+    "cash_and_equivalents": 231588000.0,
+    "short_term_investments": null,
+    "preferred_equity": 0.0,
+    "noncontrolling_interest": 0.0
+  },
+  "quarters": [
+    {
+      "revenue": 4541314000.0,
+      "gross_profit": 1682609000.0,
+      "ebit": 529862000.0,
+      "net_income": 360715000.0,
+      "d_and_a": 130848000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2026-06-30"
+    },
+    {
+      "revenue": 3592046000.0,
+      "gross_profit": 1301185000.0,
+      "ebit": 233431000.0,
+      "net_income": 164524000.0,
+      "d_and_a": 126601000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2026-03-31"
+    },
+    {
+      "revenue": 3898320000.0,
+      "gross_profit": 1369879000.0,
+      "ebit": 297731000.0,
+      "net_income": 227407000.0,
+      "d_and_a": 127763000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-12-31"
+    },
+    {
+      "revenue": 3719044000.0,
+      "gross_profit": 1389232000.0,
+      "ebit": 342709000.0,
+      "net_income": 259268000.0,
+      "d_and_a": 124069000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-09-30"
+    },
+    {
+      "revenue": 4439729000.0,
+      "gross_profit": 1639974000.0,
+      "ebit": 577812000.0,
+      "net_income": 430043000.0,
+      "d_and_a": 122100000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-06-30"
+    }
+  ],
+  "fiscal_years": [
+    {
+      "revenue": 15524046000.0,
+      "gross_profit": 5654508000.0,
+      "ebit": 1467389000.0,
+      "net_income": 1096087000.0,
+      "d_and_a": 494011000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2025-12-31"
+    },
+    {
+      "revenue": 14883231000.0,
+      "gross_profit": 5396557000.0,
+      "ebit": 1467532000.0,
+      "net_income": 1101240000.0,
+      "d_and_a": 447162000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2024-12-31"
+    },
+    {
+      "revenue": 14555741000.0,
+      "gross_profit": 5228219000.0,
+      "ebit": 1478912000.0,
+      "net_income": 1107226000.0,
+      "d_and_a": 393049000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2023-12-31"
+    },
+    {
+      "revenue": 14204717000.0,
+      "gross_profit": 4972204000.0,
+      "ebit": 1434943000.0,
+      "net_income": 1088712000.0,
+      "d_and_a": 343062000.0,
+      "preferred_dividends": 0.0,
+      "nci_income": 0.0,
+      "period_end": "2022-12-31"
+    }
+  ],
+  "source": "yfinance"
+}
