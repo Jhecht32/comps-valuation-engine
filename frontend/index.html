@@ -28,6 +28,10 @@
   button.secondary { background: #fff; color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
   .actions { display: flex; gap: 8px; }
+  .labelrow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .labelrow label { margin-bottom: 4px; }
+  button.linklike { font: inherit; font-size: 12px; color: var(--accent); background: none; border: 0; padding: 0;
+                    margin-bottom: 4px; cursor: pointer; text-decoration: underline; white-space: nowrap; }
   #status { margin-top: 10px; color: var(--muted); min-height: 1.4em; }
   #error { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-bg); color: var(--bad); }
   .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
@@ -41,6 +45,13 @@
   th.l, td.l { text-align: left; }
   tr.target td { background: var(--target); font-weight: 600; }
   tr.target td:first-child { border-left: 3px solid var(--accent); }
+  tr.target td.below { background: #e2f1e6; cursor: help; }
+  tr.target td.above { background: #fbecd0; cursor: help; }
+  .headline { font-size: 16px; font-weight: 600; margin: 24px 0 -8px; padding: 10px 14px;
+              border-left: 3px solid var(--accent); background: var(--target); font-variant-numeric: tabular-nums; }
+  .headline.muted { font-weight: 500; color: var(--muted); border-left-color: var(--line); background: var(--panel); }
+  #stats th.median, #stats td.median { font-weight: 700; color: var(--ink); }
+  p.note.after { margin: 8px 0 0; }
   td.nm, td.na { color: var(--muted); }
   td.nm { cursor: help; text-decoration: underline dotted; }
   .tag { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
@@ -77,7 +88,10 @@
       <input id="ticker" placeholder="HD" required pattern="[A-Za-z0-9.\-]{1,12}" autocomplete="off" autofocus>
     </div>
     <div>
-      <label for="peers">Peers (suggested on run, editable, comma-separated)</label>
+      <div class="labelrow">
+        <label for="peers">Peers (suggested on run, editable, comma-separated)</label>
+        <button type="button" class="linklike" id="reset" hidden title="Put the last suggested peer set back in the field">Reset to suggested</button>
+      </div>
       <input id="peers" placeholder="Filled from /api/peers on run" autocomplete="off">
     </div>
     <div class="actions">
@@ -102,6 +116,7 @@
   </details>
 
   <section id="results" hidden>
+    <p class="headline" id="headline"></p>
     <h2>Comps table</h2>
     <p class="note" id="units"></p>
     <div class="tablewrap">
@@ -133,14 +148,16 @@
         <p class="note">Across valued peers with a meaningful multiple; NM excluded. Percentiles are Excel PERCENTILE.INC.</p>
         <div class="tablewrap">
           <table id="stats">
-            <thead><tr><th class="l">Multiple</th><th>Min</th><th>25th</th><th>Median</th><th>Mean</th><th>75th</th><th>Max</th></tr></thead>
+            <thead><tr><th class="l">Multiple</th><th>Min</th><th>25th</th><th class="median">Median</th><th>Mean</th><th>75th</th><th>Max</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
+        <p class="note after">Median is the default reference — it resists distortion from a single outlier better than the mean. Compare the mean beside it: a large gap between them means the peer set is skewed.</p>
       </div>
       <div>
         <h2>Implied valuation of <span id="target-label"></span></h2>
         <p class="note" id="implied-note"></p>
+        <p class="note">Read this as a range, not a target price. If the range doesn't bracket the current share price, the peer set is usually the reason before the company is.</p>
         <div class="tablewrap">
           <table id="implied">
             <thead><tr><th class="l">Methodology</th><th>Low<small>25th pct</small></th><th>Mid<small id="mid-label"></small></th><th>High<small>75th pct</small></th></tr></thead>
@@ -169,6 +186,7 @@
   var API = location.protocol === "file:" ? "http://127.0.0.1:8000" : location.origin;
   var MM = 1e6;
   var peerFlags = [];  // from the last /api/peers call, shown under Data quality
+  var suggested = null;  // the last suggestion as returned, for "Reset to suggested"
 
   var fmt1 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   var fmt2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -232,6 +250,40 @@
 
   // --- Rendering ------------------------------------------------------------
 
+  // The target's multiple against the peer interquartile range: a cell
+  // outside it is where a reader should ask why this company differs.
+  function iqrCell(m, stats) {
+    var cell = td(multiple(m));
+    if (!m || m.is_nm || m.value == null || !stats || stats.n === 0) return cell;
+    if (m.value < stats.p25) {
+      cell.className += " below";
+      cell.title = "Below the peer interquartile range; the 25th percentile is " + fmt1.format(stats.p25) + "x.";
+    } else if (m.value > stats.p75) {
+      cell.className += " above";
+      cell.title = "Above the peer interquartile range; the 75th percentile is " + fmt1.format(stats.p75) + "x.";
+    }
+    return cell;
+  }
+
+  function renderHeadline(r) {
+    var t = r.target, m = t.multiples.ev_ebitda, s = r.statistics.ev_ebitda, node = $("headline");
+    node.className = "headline";
+    if (m.is_nm || m.value == null) {
+      node.className += " muted";
+      node.textContent = t.ticker + "'s EV/EBITDA is NM (" + (m.nm_reason || "not meaningful") + "), so no premium or discount to peers can be read off it.";
+      return;
+    }
+    if (s.n === 0 || s.median == null) {
+      node.className += " muted";
+      node.textContent = t.ticker + " trades at " + fmt1.format(m.value) + "x LTM EBITDA; no valued peer has a meaningful EV/EBITDA to compare against.";
+      return;
+    }
+    var pct = Math.round((m.value / s.median - 1) * 100);
+    var verdict = pct === 0 ? "in line with peers" : "a " + Math.abs(pct) + "% " + (pct > 0 ? "premium" : "discount");
+    node.textContent = t.ticker + " trades at " + fmt1.format(m.value) + "x LTM EBITDA versus a peer median of " +
+      fmt1.format(s.median) + "x — " + verdict + ".";
+  }
+
   function renderComps(r) {
     var body = $("comps").querySelector("tbody");
     clear(body);
@@ -246,6 +298,7 @@
       nameCell.title = c.name || "";
       var sharesCell = td(shares(b.diluted_shares));
       if (b.shares_are_basic_fallback) { sharesCell.title = "Basic shares; diluted count unavailable"; sharesCell.textContent += "*"; }
+      var isTarget = i === 0, st = r.statistics;
       var tr = row([
         tickerCell,
         nameCell,
@@ -258,10 +311,10 @@
         td(money(ltm.revenue)),
         td(money(ltm.ebitda)),
         td(pct(ltm.ebitda, ltm.revenue)),
-        td(multiple(m.ev_revenue)),
-        td(multiple(m.ev_ebitda)),
-        td(multiple(m.ev_ebit)),
-        td(multiple(m.pe))
+        isTarget ? iqrCell(m.ev_revenue, st.ev_revenue) : td(multiple(m.ev_revenue)),
+        isTarget ? iqrCell(m.ev_ebitda, st.ev_ebitda) : td(multiple(m.ev_ebitda)),
+        isTarget ? iqrCell(m.ev_ebit, st.ev_ebit) : td(multiple(m.ev_ebit)),
+        isTarget ? iqrCell(m.pe, st.pe) : td(multiple(m.pe))
       ]);
       if (i === 0) tr.className = "target";
       body.appendChild(tr);
@@ -275,7 +328,7 @@
       var s = stats[pair[0]];
       body.appendChild(row([
         labelCell(pair[1], s.n),
-        td(stat(s.min)), td(stat(s.p25)), td(stat(s.median)), td(stat(s.mean)), td(stat(s.p75)), td(stat(s.max))
+        td(stat(s.min)), td(stat(s.p25)), td(stat(s.median), "median"), td(stat(s.mean)), td(stat(s.p75)), td(stat(s.max))
       ]));
     });
   }
@@ -327,6 +380,7 @@
   }
 
   function render(r) {
+    renderHeadline(r);
     renderComps(r);
     renderStats(r.statistics);
     renderImplied(r);
@@ -384,6 +438,8 @@
       step = suggestPeers(target).then(function (suggestion) {
         peers = suggestion.peers.map(function (p) { return p.ticker; });
         peerFlags = suggestion.flags || [];
+        suggested = { target: target, peers: peers.slice(), flags: peerFlags.slice() };
+        $("reset").hidden = false;
         $("peers").value = peers.join(", ");
         if (!peers.length) {
           var why = peerFlags.length ? peerFlags[0].message + " " : "";
@@ -412,6 +468,13 @@
 
   $("form").addEventListener("submit", function (e) { e.preventDefault(); run(true); });
   $("rerun").addEventListener("click", function () { run(false); });
+  $("reset").addEventListener("click", function () {
+    if (!suggested) return;
+    $("peers").value = suggested.peers.join(", ");
+    peerFlags = suggested.flags.slice();
+    hideError();
+    status("Peers reset to the set suggested for " + suggested.target + ". Use “Run with listed peers” to re-value.");
+  });
   $("footer").textContent = "API: " + API + " · OpenAPI docs at " + API + "/docs";
 })();
 </script>

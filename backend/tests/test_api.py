@@ -220,18 +220,24 @@ def test_peers_shape():
     assert body["market_cap_band"]["low_multiple"] == 0.33
     assert body["market_cap_band"]["high_multiple"] == 3.0
     assert body["market_cap_band"]["low"] == pytest.approx(0.33 * 320308248576)
+    # Recorded sector names (TSCO $18B, WSM $27B) sit below the band, so
+    # widening adds nothing and the lone name carries both flags.
     assert [(p["ticker"], p["match_basis"]) for p in body["peers"]] == [("LOW", "industry")]
-    assert [f["code"] for f in body["flags"]] == ["thin_peer_set"]
+    assert [f["code"] for f in body["flags"]] == ["peer_set_widened", "thin_peer_set"]
 
 
-def test_peers_thin_set_is_flagged_not_widened():
-    # FND ($5.3B): nothing else in Home Improvement Retail fits the band.
-    # Specialty Retail names in the same sector are not substituted.
-    app = create_app(provider=recorded_provider(), today=lambda: TODAY)
+def test_peers_small_target_widens_to_sector_and_flags():
+    # FND ($5.3B): nothing else in Home Improvement Retail fits the band,
+    # so a Specialty Retail name in the sector and the band fills in.
+    arhs = CompanyProfile(
+        ticker="ARHS", name="Arhaus, Inc.", sector="Consumer Cyclical", industry="Specialty Retail",
+        market_cap=8e9, price_currency="USD", reporting_currency="USD",
+    )
+    app = create_app(provider=recorded_provider(ARHS=arhs), today=lambda: TODAY)
     with TestClient(app) as c:
         body = c.get("/api/peers/FND").json()
-    assert body["peers"] == []
-    assert [f["code"] for f in body["flags"]] == ["thin_peer_set"]
+    assert [(p["ticker"], p["match_basis"]) for p in body["peers"]] == [("ARHS", "sector")]
+    assert [f["code"] for f in body["flags"]] == ["peer_set_widened", "thin_peer_set"]
 
 
 def test_peers_not_found():

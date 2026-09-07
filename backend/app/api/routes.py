@@ -69,6 +69,8 @@ def post_comps(body: CompsRequest, provider: ProviderDep, today: TodayDep) -> Co
 )
 def get_peers(ticker: TickerPath, provider: ProviderDep) -> PeersResponse:
     """Suggested peers: same industry, market cap within 0.33x-3.0x of the
-    target, same currencies. Never widened to the sector; a set of fewer
-    than three names is returned as found with a thin_peer_set flag."""
+    target, same currencies. Fewer than four industry names widens the
+    screen to the sector, capped at eight names closest in market cap and
+    flagged peer_set_widened; a set still short of four is also flagged
+    thin_peer_set."""
     return suggest_peers(provider, ticker)

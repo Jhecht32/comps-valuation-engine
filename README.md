@@ -2,7 +2,7 @@
 
 ## What it does
 
-Comparable-companies analysis over public data, as an API. Given a target and a peer list, it pulls prices and statements from Yahoo Finance, builds each company's enterprise value and LTM multiples (EV/Revenue, EV/EBITDA, EV/EBIT, P/E), summarises the peer distribution, and applies them back to the target for an implied per-share range. Every approximation travels with the result as a data-quality flag; an unvaluable peer lands in a per-ticker errors map rather than failing the run. FastAPI, yfinance, in-memory TTL cache, single-file HTML frontend.
+Comparable-companies analysis over public data, as an API. Given a target and peers, it pulls prices and statements from Yahoo Finance, builds each company's enterprise value and LTM multiples (EV/Revenue, EV/EBITDA, EV/EBIT, P/E), summarises the peer distribution, and applies them back to the target for an implied per-share range. Every approximation travels with the result as a data-quality flag; an unvaluable peer lands in a per-ticker errors map rather than failing the run. FastAPI, yfinance, TTL cache, single-file HTML frontend.
 
 ## EV bridge
 
@@ -16,7 +16,7 @@ Diluted shares are required; basic shares are a flagged fallback. Missing debt o
 
 ## LTM methodology
 
-LTM = the four most recent reported quarters; FY + current YTD stub − prior-year stub is also supported. EBITDA = LTM EBIT + LTM D&A; EBIT is operating income, D&A comes from the cash flow statement. Diluted EPS = (LTM net income − preferred dividends − income to noncontrolling interests) ÷ current diluted shares. A multiple is NM when its denominator is zero or negative, EV is negative, or EV/EBITDA exceeds 100x; NM values are excluded from statistics. Percentiles use Excel's PERCENTILE.INC interpolation. Non-consecutive quarters, filings older than 135 days, and missing line items are flagged.
+LTM = the four most recent reported quarters; FY + current YTD stub − prior-year stub is also supported. EBITDA = LTM EBIT + LTM D&A; EBIT is operating income, D&A from the cash flow statement. Diluted EPS = (LTM net income − preferred dividends − income to noncontrolling interests) ÷ current diluted shares. A multiple is NM when its denominator is zero or negative, EV is negative, or EV/EBITDA exceeds 100x; NM values are excluded from statistics. Percentiles follow Excel's PERCENTILE.INC. Non-consecutive quarters, filings older than 135 days, and missing line items are flagged.
 
 ## Validation
 
@@ -29,7 +29,7 @@ The engine was tied line-by-line to a model built by hand from Home Depot's 10-Q
 - No calendarization for non-December fiscal year ends.
 - Yahoo's headline Total Debt bundles capitalized operating leases (62,567 vs. 52,896 for HD), so debt is built from component rows to stay consistent with unadjusted EBITDA.
 - Filers that split tangible and intangible D&A require summing both cash-flow lines; the income-statement figure understates HD's EBITDA by roughly $850mm annually.
-- Peer screening is mechanical (same industry, market cap 0.33x–3.0x, no sector fallback): a starting point, not a substitute for judgment. Prune and add names before trusting the output.
+- Peer screening is mechanical (same industry, market cap 0.33x–3.0x, widened to sector and flagged when thin): a starting point, not a substitute for judgment. Prune and add names before trusting the output.
 - Not investment advice.
 
 ## Setup
