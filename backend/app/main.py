@@ -11,9 +11,18 @@ request shares one TTL cache, and exposes both on app.state. Tests pass
 a fixture provider, a fixture proxy source, and a fixed date.
 
 The single-file frontend in ../frontend is served at / from the same
-app, so no separate static server (and no CORS) is needed locally.
+app, so no separate static server (and no CORS) is needed locally or in
+a deployment. The directory is found relative to this file, whatever
+the working directory, or set explicitly with COMPS_FRONTEND_DIR (the
+deployed app, installed into site-packages, uses that); a directory
+that does not exist is skipped with a warning.
+
+Deployed with uvicorn's factory mode against create_app:
+
+    uvicorn app.main:create_app --factory --host 0.0.0.0 --port $PORT
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import date
@@ -37,9 +46,17 @@ from app.data.provider import (
 from app.data.proxy_peers import ProxyPeerSource
 from app.services import ErrorCode, InsufficientDataError, TickerError, ticker_error
 
+log = logging.getLogger(__name__)
+
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 PROXY_PEERS_ENV = "COMPS_PROXY_PEERS"
+FRONTEND_DIR_ENV = "COMPS_FRONTEND_DIR"
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+
+# Sentinel default for create_app's frontend_dir: resolve from the
+# environment when the app is built, so a deployment can point at its
+# own copy of the frontend and None still means "no frontend".
+_FROM_ENV = object()
 
 # Most specific first; Starlette matches handlers by the exception's MRO.
 _STATUS_BY_ERROR: list[tuple[type[Exception], int]] = [
@@ -63,6 +80,13 @@ def _default_proxy_source() -> ProxyPeerSource | None:
     from app.data.edgar import EdgarProxyPeerSource
 
     return EdgarProxyPeerSource()
+
+
+def _frontend_dir() -> Path:
+    """COMPS_FRONTEND_DIR when set (a relative path is taken from the
+    working directory at startup), else the checkout's ../frontend."""
+    raw = os.environ.get(FRONTEND_DIR_ENV, "").strip()
+    return Path(raw).expanduser().resolve() if raw else FRONTEND_DIR
 
 
 def _cors_origins() -> list[str]:
@@ -105,7 +129,7 @@ def create_app(
     proxy_source: ProxyPeerSource | None = None,
     today: Callable[[], date] = date.today,
     cors_origins: list[str] | None = None,
-    frontend_dir: Path | None = FRONTEND_DIR,
+    frontend_dir: Path | None | object = _FROM_ENV,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -136,10 +160,16 @@ def create_app(
     )
     app.include_router(router)
     _register_error_handlers(app)
-    if frontend_dir is not None and frontend_dir.is_dir():
-        # Mounted last so the /api routes match first; html=True serves
-        # index.html at /. Skipped when the directory is absent (backend-only deploys).
-        app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+    if frontend_dir is _FROM_ENV:
+        frontend_dir = _frontend_dir()
+    if isinstance(frontend_dir, Path):
+        if frontend_dir.is_dir():
+            # Mounted last so the /api routes match first; html=True serves
+            # index.html at /.
+            app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+        else:
+            # Backend-only: the API still works, / is a 404.
+            log.warning("frontend directory %s not found; serving the API only", frontend_dir)
     return app
 
 

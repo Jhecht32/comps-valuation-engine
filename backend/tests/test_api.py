@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.data import CachedProvider, CompanyProfile, FixtureProvider, MarketDataError, MarketDataProvider
 from app.data.fixtures import HOME_DEPOT
-from app.main import create_app
+from app.main import FRONTEND_DIR_ENV, create_app
 from tests.helpers import CountingProvider, recorded_provider
 
 TODAY = date(2026, 9, 6)
@@ -292,3 +292,37 @@ def test_root_serves_the_frontend_page(client):
 def test_api_routes_win_over_the_frontend_mount(client):
     assert client.get("/api/health").json() == {"status": "ok"}
     assert client.get("/api/company/HD").status_code == 200
+
+
+def test_frontend_is_found_whatever_the_working_directory(provider, monkeypatch, tmp_path):
+    monkeypatch.delenv(FRONTEND_DIR_ENV, raising=False)
+    monkeypatch.chdir(tmp_path)
+    app = create_app(provider=provider, today=lambda: TODAY)
+    with TestClient(app) as c:
+        r = c.get("/")
+    assert r.status_code == 200
+    assert "<title>Comps Valuation Engine</title>" in r.text
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_frontend_dir_can_be_set_from_the_environment(provider, monkeypatch, tmp_path, relative):
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><title>elsewhere</title>")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(FRONTEND_DIR_ENV, "ui" if relative else str(ui))
+    app = create_app(provider=provider, today=lambda: TODAY)
+    with TestClient(app) as c:
+        r = c.get("/")
+    assert r.status_code == 200
+    assert "elsewhere" in r.text
+
+
+def test_missing_frontend_dir_skips_the_mount_and_warns(provider, monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv(FRONTEND_DIR_ENV, str(tmp_path / "nowhere"))
+    with caplog.at_level("WARNING", logger="app.main"):
+        app = create_app(provider=provider, today=lambda: TODAY)
+    assert "nowhere" in caplog.text
+    with TestClient(app) as c:
+        assert c.get("/").status_code == 404
+        assert c.get("/api/health").status_code == 200

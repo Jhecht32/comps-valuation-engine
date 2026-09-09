@@ -88,3 +88,16 @@ make test-live  # also hits Yahoo Finance and SEC EDGAR
 UI at `/`, docs at `/docs`. Endpoints: `GET /api/company/{ticker}`, `POST /api/comps`, `GET /api/peers/{ticker}`.
 
 Peer discovery reads SEC EDGAR, which requires a User-Agent naming the caller and a contact: set `COMPS_SEC_USER_AGENT="Your Name you@example.com"` (a placeholder is used otherwise). `COMPS_PROXY_PEERS=off` skips the proxy step and screens only.
+
+## Deployment
+
+Live at: **https://comps-valuation-engine.onrender.com** (placeholder; replace with the URL Render assigns).
+
+The backend deploys to Render's free tier from `render.yaml` at the repo root, and serves the frontend itself, so there is one service. To deploy: fork or push the repo, then in the Render dashboard choose New → Blueprint, connect the repository, and apply. Render reads `render.yaml`, prompts for `COMPS_SEC_USER_AGENT` (the EDGAR contact string above), builds with `pip install ./backend` on Python 3.14.3 (the version pinned in the blueprint, matching `backend/.venv`), and starts uvicorn against `app.main:create_app` in factory mode on the port Render provides. Health checks hit `GET /api/health`. Every push to the default branch redeploys.
+
+What to expect on the free tier:
+
+- **Cold starts.** A free instance spins down after 15 minutes without traffic. The next request waits roughly a minute while it comes back; the UI's first Run after a quiet spell will sit on "Loading" for that long, and a `curl https://<your-url>/api/health` warms it up. Paid instances do not spin down.
+- **The cache is in memory and per instance.** The lifespan wraps the yfinance provider in `CachedProvider` (prices refresh after 15 minutes, financials after 24 hours), and the service runs a single uvicorn worker, so repeat requests for a ticker are served from memory instead of re-fetching from Yahoo. A spin-down empties the cache, so the first run after a cold start fetches everything again.
+- **Frontend location.** Installed into site-packages, the app cannot find `../frontend` by its own location, so the blueprint sets `COMPS_FRONTEND_DIR=frontend`, resolved against the repo root where Render runs the start command. Point it elsewhere if you move the frontend or set a `rootDir`; if the directory is missing the API still serves and `/` is a 404, with a warning in the logs.
+- **Yahoo Finance from a shared IP.** Requests come from Render's address pool, so yfinance may be rate-limited more readily than from a laptop; the cache keeps that to the first request per ticker per TTL.

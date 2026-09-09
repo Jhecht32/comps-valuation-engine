@@ -1,0 +1,32 @@
+# Render Blueprint: one free web service running the FastAPI backend,
+# which also serves the frontend at /. Deploy with New > Blueprint in
+# the Render dashboard, pointed at this repository.
+#
+# Free-tier behaviour: the instance spins down after 15 minutes without
+# traffic and takes about a minute to come back on the next request;
+# the in-memory TTL cache is lost with it. See README, "Deployment".
+services:
+  - type: web
+    name: comps-valuation-engine
+    runtime: python
+    plan: free
+    # Installs backend/pyproject.toml's dependencies and the app package.
+    buildCommand: pip install --upgrade pip && pip install ./backend
+    # Factory mode calls create_app(), whose lifespan wraps the yfinance
+    # provider in the TTL cache. One worker (the default), so every
+    # request shares that cache.
+    startCommand: uvicorn app.main:create_app --factory --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # Same interpreter as backend/.venv.
+      - key: PYTHON_VERSION
+        value: 3.14.3
+      # The package lives in site-packages after the build, so the
+      # frontend is located explicitly: relative to the repo root, where
+      # Render runs the start command.
+      - key: COMPS_FRONTEND_DIR
+        value: frontend
+      # SEC EDGAR requires a User-Agent naming the caller and a contact,
+      # e.g. "Your Name you@example.com". Prompted for in the dashboard.
+      - key: COMPS_SEC_USER_AGENT
+        sync: false
