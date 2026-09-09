@@ -14,7 +14,7 @@ reported in the response's errors map next to the peers that succeeded.
 
 from fastapi import APIRouter
 
-from app.api.deps import ProviderDep, TodayDep
+from app.api.deps import ProviderDep, ProxySourceDep, TodayDep
 from app.api.schemas import (
     CompanyResponse,
     CompsRequest,
@@ -67,10 +67,13 @@ def post_comps(body: CompsRequest, provider: ProviderDep, today: TodayDep) -> Co
     response_model=PeersResponse,
     responses={**_ERRORS, 501: {"model": ErrorResponse, "description": "Source cannot screen for peers"}},
 )
-def get_peers(ticker: TickerPath, provider: ProviderDep) -> PeersResponse:
-    """Suggested peers: same industry, market cap within 0.33x-3.0x of the
-    target, same currencies. Fewer than four industry names widens the
-    screen to the sector, capped at eight names closest in market cap and
-    flagged peer_set_widened; a set still short of four is also flagged
-    thin_peer_set."""
-    return suggest_peers(provider, ticker)
+def get_peers(ticker: TickerPath, provider: ProviderDep, proxy_source: ProxySourceDep, today: TodayDep) -> PeersResponse:
+    """Candidate peers from two sources combined: the peer group
+    disclosed in the target's latest proxy statement (DEF 14A), filtered
+    for business comparability, and a screen on the target's industry
+    (market cap within 0.2x-5.0x, same currencies). Each name carries
+    the source(s) that suggested it; names in both come first. Neither
+    source is a peer set on its own, so curate the list. proxy_label and
+    screen_label describe each source; flags explain every unreadable
+    filing, unmapped or filtered proxy name, and thin result."""
+    return suggest_peers(provider, ticker, proxy_source=proxy_source, today=today)

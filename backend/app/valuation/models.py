@@ -28,9 +28,14 @@ class FlagCode(str, Enum):
     NONCONSECUTIVE_QUARTERS = "nonconsecutive_quarters"
     STALE_FILING = "stale_filing"
     EPS_FROM_CONSOLIDATED_NI = "eps_from_consolidated_ni"
-    # Raised by peer screening (app.services.peers), not by the engine.
-    PEER_SET_WIDENED = "peer_set_widened"  # industry was thin; sector names added, review them
-    THIN_PEER_SET = "thin_peer_set"        # still fewer names than a usable set needs
+    # Raised by peer suggestion (app.services.peers), not by the engine.
+    SCREEN_ON_SECTOR = "screen_on_sector"  # the target has no industry classification; its sector was screened, loosely
+    THIN_PEER_SET = "thin_peer_set"        # both sources together gave fewer names than a usable set needs
+    PROXY_PEERS_UNAVAILABLE = "proxy_peers_unavailable"        # no proxy statement, or its peer group could not be read or gave nothing
+    PROXY_PEERS_LOW_CONFIDENCE = "proxy_peers_low_confidence"  # a list was found but too few names mapped to trust it
+    PROXY_PEERS_UNMATCHED = "proxy_peers_unmatched"            # names in the proxy peer group with no ticker; add by hand
+    PROXY_PEERS_DROPPED = "proxy_peers_dropped"                # proxy names filtered out: other sector, margin too far, or unvaluable
+    PROXY_FILTER_PARTIAL = "proxy_filter_partial"              # the sector or margin test could not be applied to the proxy group
 
 
 class DataQualityFlag(BaseModel):

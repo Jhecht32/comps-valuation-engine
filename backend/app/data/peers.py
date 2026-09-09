@@ -1,11 +1,13 @@
 """Peer selection rule, applied identically to every source.
 
 A suggested peer shares the target's industry (or, on the sector basis,
-its sector), sits inside a market-cap band of 0.33x-3.0x the target, and
+its sector), sits inside a market-cap band of 0.2x-5.0x the target, and
 trades and reports in the target's currencies. The band is a
-size-similarity heuristic, not a valuation input: a company a quarter
-the size of the target is usually at a different stage of its life and
-priced accordingly, and one four times larger dominates the median.
+size-similarity heuristic, not a valuation input, and it is deliberately
+wide: a large company in a thin Yahoo industry (Nike in Footwear &
+Accessories, where the next name is a fifth its size) has nothing
+within 3x of it, and a tight band returned nothing at all. Candidates
+are ordered closest in size first, so the loose fits come last.
 """
 
 import math
@@ -16,8 +18,8 @@ from pydantic import BaseModel
 
 from app.data.provider import CompanyProfile
 
-MARKET_CAP_LOW_MULTIPLE = 0.33
-MARKET_CAP_HIGH_MULTIPLE = 3.0
+MARKET_CAP_LOW_MULTIPLE = 0.2
+MARKET_CAP_HIGH_MULTIPLE = 5.0
 
 
 class MatchBasis(str, Enum):
@@ -48,7 +50,7 @@ def market_cap_band(
     )
 
 
-def _same_currency(target: CompanyProfile, candidate: CompanyProfile) -> bool:
+def same_currency(target: CompanyProfile, candidate: CompanyProfile) -> bool:
     # When the target's currency is known, a candidate must match it; an
     # unknown candidate currency cannot be confirmed and is dropped, the
     # same stance the engine's currency guard takes.
@@ -116,7 +118,7 @@ def select_peers(
             continue
         if c.market_cap is None or not band.low <= c.market_cap <= band.high:
             continue
-        if not _same_currency(target, c):
+        if not same_currency(target, c):
             continue
         kept[c.ticker] = c
     by_cap = sorted(kept.values(), key=lambda c: c.market_cap, reverse=True)

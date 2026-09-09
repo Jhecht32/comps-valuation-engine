@@ -32,6 +32,28 @@
   .labelrow label { margin-bottom: 4px; }
   button.linklike { font: inherit; font-size: 12px; color: var(--accent); background: none; border: 0; padding: 0;
                     margin-bottom: 4px; cursor: pointer; text-decoration: underline; white-space: nowrap; }
+  p.source { margin: 0 0 6px; font-size: 12px; color: var(--muted); padding: 4px 8px;
+             border-left: 3px solid var(--line); background: var(--panel); }
+  p.source.proxy { color: #5a3d00; border-left-color: var(--warn); background: #fff7e6; }
+  p.source a { color: inherit; }
+  p.source .n { font-weight: 400; margin-left: 0; }
+  p.source .tag { margin: 0 6px 0 0; }
+  .tag.warn { color: var(--warn); border-color: var(--warn); }
+  .tag.screen { color: var(--muted); border-color: var(--muted); }
+  #candidates-wrap { margin-top: 18px; }
+  #candidates-wrap h3 { margin-top: 16px; }
+  ul.candidates { list-style: none; padding: 0; }
+  ul.candidates li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 3px 0;
+                     border-bottom: 1px solid var(--line); }
+  ul.candidates li:last-child { border-bottom: 0; }
+  ul.candidates li.off b, ul.candidates li.off .name { color: var(--muted); text-decoration: line-through; }
+  ul.candidates .tags { min-width: 150px; }
+  ul.candidates .tags .tag { margin: 0 4px 0 0; }
+  ul.candidates b { min-width: 52px; }
+  ul.candidates .detail { color: var(--muted); font-size: 12px; }
+  ul.candidates button.linklike { margin: 0 0 0 auto; }
+  li.dropped button.linklike { margin: 0 0 0 8px; }
+  li.dropped .listed { color: var(--muted); font-size: 12px; margin-left: 8px; }
   #status { margin-top: 10px; color: var(--muted); min-height: 1.4em; }
   #error { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-bg); color: var(--bad); }
   .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
@@ -88,19 +110,31 @@
       <input id="ticker" placeholder="HD" required pattern="[A-Za-z0-9.\-]{1,12}" autocomplete="off" autofocus>
     </div>
     <div>
+      <div id="peer-sources" hidden></div>
       <div class="labelrow">
-        <label for="peers">Peers (suggested on run, editable, comma-separated)</label>
-        <button type="button" class="linklike" id="reset" hidden title="Put the last suggested peer set back in the field">Reset to suggested</button>
+        <label for="peers">Peers (candidates from both sources on run; curate, comma-separated)</label>
+        <button type="button" class="linklike" id="reset" hidden title="Put every suggested candidate back in the field">Reset to suggested</button>
       </div>
       <input id="peers" placeholder="Filled from /api/peers on run" autocomplete="off">
     </div>
     <div class="actions">
-      <button type="submit" id="run" title="GET /api/peers/{ticker}, then POST /api/comps">Run</button>
+      <button type="submit" id="run" title="GET /api/peers/{ticker} for candidates, then POST /api/comps">Run</button>
       <button type="button" class="secondary" id="rerun" title="POST /api/comps with the peers listed, without re-fetching suggestions">Run with listed peers</button>
     </div>
   </form>
   <div id="status"></div>
   <div id="error" hidden></div>
+
+  <div id="candidates-wrap" hidden>
+    <h2>Candidates</h2>
+    <p class="note" id="candidates-note"></p>
+    <ul class="candidates" id="candidates"></ul>
+    <div id="dropped-wrap" hidden>
+      <h3>Filtered out of the compensation peer group</h3>
+      <p class="note" id="dropped-rule"></p>
+      <ul id="dropped"></ul>
+    </div>
+  </div>
 
   <details class="help" id="help">
     <summary>How to read this</summary>
@@ -111,7 +145,8 @@
       <p><b>LTM.</b> Last twelve months, not the last fiscal year. It keeps every company on a current and comparable footing.</p>
       <p><b>NM.</b> Not meaningful. A multiple with a negative or near-zero denominator is arithmetic without economic content, so it is excluded from the statistics rather than allowed to distort the median.</p>
       <p><b>Reading the implied range.</b> Peer multiples applied back to the target produce a range, not a price. Low and high are the 25th and 75th percentiles of the peer set; mid is the median.</p>
-      <p><b>The caveat.</b> The output is only as good as the peer set, and choosing peers is judgment. Prune the list.</p>
+      <p><b>Where the candidates come from.</b> Two sources, combined rather than ranked. <b>Comp peers</b>: the compensation peer group in the target's latest proxy statement, the names its board benchmarks executive pay against. Boards pick those for revenue scale and competition for talent, not business similarity (Nike lists Microsoft, Cisco, and Kimberly-Clark, and none of adidas, Puma, or Deckers), so the list is filtered first: a name is kept only if it shares the target's sector and its LTM EBITDA margin is within 50% of the target's (a 9.9% target admits 5.0%&ndash;14.9%), and every name removed is listed with its reason and can be added back. <b>Screen</b>: companies Yahoo files in the target's industry at a comparable size. Yahoo's industries are coarse, so a screen match is a candidate, not a peer. Each candidate is tagged with the source(s) that named it; a name in both is the strongest signal the tool can give and is listed first.</p>
+      <p><b>The caveat.</b> Neither source is a peer set. Comp peer groups reflect pay benchmarking; industry screens are too coarse. The output is only as good as the peer set, and choosing peers is judgment: remove and add names before trusting the numbers.</p>
     </div>
   </details>
 
@@ -364,6 +399,152 @@
     return li;
   }
 
+  function sourceLine(cls, tag, text) {
+    var line = el("p", null, cls);
+    line.appendChild(el("span", tag, "tag" + (cls.indexOf("proxy") >= 0 ? " warn" : " screen")));
+    line.appendChild(el("span", text));
+    return line;
+  }
+  function hasSource(p, src) { return (p.sources || []).indexOf(src) >= 0; }
+  function findFlag(flags, codes) {
+    for (var i = 0; i < (flags || []).length; i++) if (codes.indexOf(flags[i].code) >= 0) return flags[i];
+    return null;
+  }
+
+  // Where the candidates came from, one line per source above the field:
+  // the proxy statement's compensation peer group (with a link to the
+  // filing and how the filter went) and the industry screen.
+  function renderSources(s, edited) {
+    var node = $("peer-sources");
+    clear(node);
+    if (s.proxy_label) {
+      var line = sourceLine("source proxy", "Comp peers", s.proxy_label);
+      var a = el("a", "filing");
+      a.href = s.proxy.document_url; a.target = "_blank"; a.rel = "noopener";
+      a.title = "Filed " + s.proxy.filing_date + "; the list was found under \u201c" + s.proxy.context + "\u201d";
+      line.appendChild(document.createTextNode(" ("));
+      line.appendChild(a);
+      line.appendChild(document.createTextNode(")"));
+      var kept = s.peers.filter(function (p) { return hasSource(p, "proxy"); }).length;
+      var total = s.proxy.peers.length, dropped = (s.proxy_dropped || []).length;
+      var detail = kept + " of " + total + " kept";
+      if (dropped) detail += ", " + dropped + " filtered out (listed below)";
+      if (s.proxy.unmatched.length) detail += ", " + s.proxy.unmatched.length + " without a ticker";
+      if (s.proxy.confidence !== "high") detail += ", " + s.proxy.confidence + " confidence";
+      line.appendChild(el("span", " \u00b7 " + detail, "n"));
+      node.appendChild(line);
+    } else {
+      var why = findFlag(s.flags, ["proxy_peers_unavailable", "proxy_peers_low_confidence"]);
+      if (why) node.appendChild(sourceLine("source", "Comp peers", why.message));
+    }
+    var screened = s.peers.filter(function (p) { return hasSource(p, "screen"); }).length;
+    var band = s.market_cap_band, universe = s.target.industry || s.target.sector;
+    var screen = screened
+      ? sourceLine("source", "Screen", s.screen_label)
+      : sourceLine("source", "Screen", "No industry matches within the market cap band.");
+    screen.appendChild(el("span", " \u00b7 " + (screened ? screened + " name" + (screened === 1 ? "" : "s") :
+      universe + ", " + bn(band.low) + "\u2013" + bn(band.high)), "n"));
+    node.appendChild(screen);
+    if (edited) node.appendChild(el("p", "Peers as listed, edited by hand.", "source"));
+    node.hidden = false;
+  }
+
+  function listedPeers() { return parsePeers($("peers").value); }
+
+  function setListed(ticker, on) {
+    var peers = listedPeers(), at = peers.indexOf(ticker);
+    if (on && at < 0) peers.push(ticker);
+    if (!on && at >= 0) peers.splice(at, 1);
+    $("peers").value = peers.join(", ");
+    peerFlags = [];
+    status(ticker + (on ? " added to" : " removed from") + " the peers field. Use \u201cRun with listed peers\u201d to re-value.");
+    renderCandidates();
+  }
+
+  function toggleButton(ticker, listed) {
+    var b = el("button", listed ? "remove" : "add", "linklike");
+    b.type = "button";
+    b.title = (listed ? "Take " : "Append ") + ticker + (listed ? " out of" : " to") + " the peers field";
+    b.addEventListener("click", function () { setListed(ticker, !listed); });
+    return b;
+  }
+
+  function bn(cap) { return cap == null ? null : "$" + fmt1.format(cap / 1e9) + "bn"; }
+
+  // Every candidate with the source(s) that named it, in the order the
+  // API gives (both sources first), each toggling in and out of the field.
+  function renderCandidates() {
+    var wrap = $("candidates-wrap"), list = $("candidates");
+    var s = suggested && suggested.suggestion;
+    if (!s) { wrap.hidden = true; return; }
+    clear(list);
+    var listed = listedPeers();
+    var both = 0;
+    s.peers.forEach(function (p) {
+      var inProxy = hasSource(p, "proxy"), inScreen = hasSource(p, "screen"), on = listed.indexOf(p.ticker) >= 0;
+      if (inProxy && inScreen) both++;
+      var li = el("li", null, on ? "" : "off");
+      var tags = el("span", null, "tags");
+      if (inProxy) tags.appendChild(el("span", "Comp peers", "tag warn"));
+      if (inScreen) tags.appendChild(el("span", "Screen", "tag screen"));
+      li.appendChild(tags);
+      li.appendChild(el("b", p.ticker));
+      li.appendChild(el("span", p.name || "", "name"));
+      var detail = [p.industry, bn(p.market_cap)];
+      if (p.ebitda_margin != null) detail.push(fmt1.format(p.ebitda_margin * 100) + "% EBITDA margin");
+      li.appendChild(el("span", detail.filter(Boolean).join(" \u00b7 "), "detail"));
+      li.appendChild(toggleButton(p.ticker, on));
+      list.appendChild(li);
+    });
+    var note = s.peers.length + " candidate" + (s.peers.length === 1 ? "" : "s") + " for " + s.target.ticker +
+      (both ? ", " + both + " named by both sources (listed first, the strongest signal)" : ", none named by both sources") +
+      ". Neither source is a peer set on its own: remove names that are not business comparables and add any that are missing.";
+    if (!s.peers.length) note = "No candidates for " + s.target.ticker + " from either source. Add peers by hand.";
+    $("candidates-note").textContent = note;
+    renderDropped(s, listed);
+    wrap.hidden = false;
+  }
+
+  // The names the comparability filter removed from the proxy peer group,
+  // each with its reason and a way back into the field.
+  function renderDropped(s, listed) {
+    var wrap = $("dropped-wrap"), list = $("dropped");
+    clear(list);
+    var dropped = s.proxy_dropped || [];
+    if (!dropped.length) { wrap.hidden = true; return; }
+    var f = s.proxy_filter, rule = "Kept only if ";
+    rule += f && f.sector ? "in the " + f.sector + " sector" : "in any sector (the target has none)";
+    rule += f && f.ebitda_margin != null
+      ? " and LTM EBITDA margin within " + Math.round(f.margin_band * 100) + "% of " + s.target.ticker + "\u2019s " +
+        fmt1.format(f.ebitda_margin * 100) + "% (" + fmt1.format(f.margin_low * 100) + "%\u2013" + fmt1.format(f.margin_high * 100) + "%)."
+      : " (the margin test could not be applied).";
+    $("dropped-rule").textContent = rule + " Compensation peers are chosen for pay benchmarking; add a name back if it is a business comparable.";
+    dropped.forEach(function (d) {
+      var li = el("li", null, "dropped");
+      li.appendChild(el("b", d.ticker));
+      li.appendChild(document.createTextNode(" " + d.name));
+      li.appendChild(el("span", d.rule, "code"));
+      li.appendChild(document.createTextNode(d.reason));
+      if (listed.indexOf(d.ticker) >= 0) {
+        li.appendChild(el("span", "listed", "listed"));
+      } else {
+        var b = el("button", "add back", "linklike");
+        b.type = "button";
+        b.title = "Append " + d.ticker + " to the peers field";
+        b.addEventListener("click", function () { setListed(d.ticker, true); });
+        li.appendChild(b);
+      }
+      list.appendChild(li);
+    });
+    wrap.hidden = false;
+  }
+
+  function sameList(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
   function renderQuality(r) {
     var flags = $("flags"), errors = $("errors");
     clear(flags); clear(errors);
@@ -434,20 +615,35 @@
     var peers = parsePeers($("peers").value);
     var step = Promise.resolve();
     if (suggest) {
-      status("Fetching suggested peers for " + target + "…");
+      status("Fetching candidate peers for " + target + "…");
       step = suggestPeers(target).then(function (suggestion) {
         peers = suggestion.peers.map(function (p) { return p.ticker; });
         peerFlags = suggestion.flags || [];
-        suggested = { target: target, peers: peers.slice(), flags: peerFlags.slice() };
+        suggested = { target: target, peers: peers.slice(), flags: peerFlags.slice(), suggestion: suggestion };
         $("reset").hidden = false;
         $("peers").value = peers.join(", ");
+        renderSources(suggestion, false);
+        renderCandidates();
         if (!peers.length) {
           var why = peerFlags.length ? peerFlags[0].message + " " : "";
-          throw new Error("No peers suggested for " + target + ". " + why + "Enter peers and use “Run with listed peers”.");
+          throw new Error("No candidates for " + target + ". " + why + "Enter peers and use “Run with listed peers”.");
         }
       });
+    } else if (suggested && suggested.target === target && sameList(peers, suggested.peers)) {
+      peerFlags = suggested.flags.slice();  // unchanged from the suggestion: its provenance still holds
+      renderSources(suggested.suggestion, false);
+      renderCandidates();
     } else {
       peerFlags = [];  // the listed peers are the user's own set now
+      if (suggested && suggested.target !== target) suggested = null;  // another company's candidates do not apply
+      if (suggested) {
+        renderSources(suggested.suggestion, true);
+        renderCandidates();
+      } else {
+        var node = $("peer-sources");
+        clear(node); node.appendChild(el("p", "Peers as listed, edited by hand.", "source")); node.hidden = false;
+        $("candidates-wrap").hidden = true;
+      }
     }
     step.then(function () {
       if (!peers.length) throw new Error("Enter at least one peer ticker.");
@@ -458,7 +654,7 @@
       var failed = Object.keys(result.errors || {}).length;
       status("As of " + result.as_of + ". " + result.peers.length + " of " + peers.length + " peers valued" +
         (failed ? "; " + failed + " not valued, see Data quality." : ".") +
-        (peerFlags.length ? " Suggested peer set is thin; see Data quality." : ""));
+        (peerFlags.length ? " The peer suggestion carries flags; see Data quality." : ""));
     }).catch(function (err) {
       status("");
       $("results").hidden = true;  // a stale table under an error misleads
@@ -472,9 +668,12 @@
     if (!suggested) return;
     $("peers").value = suggested.peers.join(", ");
     peerFlags = suggested.flags.slice();
+    renderSources(suggested.suggestion, false);
+    renderCandidates();
     hideError();
-    status("Peers reset to the set suggested for " + suggested.target + ". Use “Run with listed peers” to re-value.");
+    status("Peers reset to the candidates suggested for " + suggested.target + ". Use “Run with listed peers” to re-value.");
   });
+  $("peers").addEventListener("input", function () { if (suggested) renderCandidates(); });
   $("footer").textContent = "API: " + API + " · OpenAPI docs at " + API + "/docs";
 })();
 </script>

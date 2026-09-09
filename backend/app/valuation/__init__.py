@@ -27,7 +27,7 @@ from app.valuation.models import (
     PeriodFinancials,
     QuarterlyFinancials,
 )
-from app.valuation.multiples import EV_EBITDA_NM_CAP, compute_multiples, ltm_diluted_eps
+from app.valuation.multiples import EV_EBITDA_NM_CAP, compute_multiples, ebitda_margin, ltm_diluted_eps
 from app.valuation.stats import percentile_inc, summarize_multiples
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "QuarterlyFinancials",
     "build_ev_bridge",
     "compute_multiples",
+    "ebitda_margin",
     "implied_per_share",
     "implied_range",
     "ltm_diluted_eps",

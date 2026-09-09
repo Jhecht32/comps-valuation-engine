@@ -1,0 +1,182 @@
+{
+ "0": {
+  "cik_str": 1652044,
+  "ticker": "GOOGL",
+  "title": "Alphabet Inc."
+ },
+ "1": {
+  "cik_str": 789019,
+  "ticker": "MSFT",
+  "title": "MICROSOFT CORP"
+ },
+ "2": {
+  "cik_str": 1018724,
+  "ticker": "AMZN",
+  "title": "AMAZON COM INC"
+ },
+ "3": {
+  "cik_str": 1067983,
+  "ticker": "BRK-B",
+  "title": "BERKSHIRE HATHAWAY INC"
+ },
+ "4": {
+  "cik_str": 104169,
+  "ticker": "WMT",
+  "title": "Walmart Inc."
+ },
+ "5": {
+  "cik_str": 858877,
+  "ticker": "CSCO",
+  "title": "CISCO SYSTEMS, INC."
+ },
+ "6": {
+  "cik_str": 909832,
+  "ticker": "COST",
+  "title": "COSTCO WHOLESALE CORP /NEW"
+ },
+ "7": {
+  "cik_str": 21344,
+  "ticker": "KO",
+  "title": "COCA COLA CO"
+ },
+ "8": {
+  "cik_str": 80424,
+  "ticker": "PG",
+  "title": "PROCTER & GAMBLE Co"
+ },
+ "9": {
+  "cik_str": 1065280,
+  "ticker": "NFLX",
+  "title": "NETFLIX INC"
+ },
+ "10": {
+  "cik_str": 354950,
+  "ticker": "HD",
+  "title": "HOME DEPOT, INC."
+ },
+ "11": {
+  "cik_str": 1108524,
+  "ticker": "CRM",
+  "title": "Salesforce, Inc."
+ },
+ "12": {
+  "cik_str": 879764,
+  "ticker": "TTE",
+  "title": "TotalEnergies SE"
+ },
+ "13": {
+  "cik_str": 77476,
+  "ticker": "PEP",
+  "title": "PEPSICO INC"
+ },
+ "14": {
+  "cik_str": 63908,
+  "ticker": "MCD",
+  "title": "MCDONALDS CORP"
+ },
+ "15": {
+  "cik_str": 1744489,
+  "ticker": "DIS",
+  "title": "Walt Disney Co"
+ },
+ "16": {
+  "cik_str": 109198,
+  "ticker": "TJX",
+  "title": "TJX COMPANIES INC /DE/"
+ },
+ "17": {
+  "cik_str": 64803,
+  "ticker": "CVS",
+  "title": "CVS HEALTH Corp"
+ },
+ "18": {
+  "cik_str": 829224,
+  "ticker": "SBUX",
+  "title": "STARBUCKS CORP"
+ },
+ "19": {
+  "cik_str": 60667,
+  "ticker": "LOW",
+  "title": "LOWES COMPANIES INC"
+ },
+ "20": {
+  "cik_str": 1103982,
+  "ticker": "MDLZ",
+  "title": "Mondelez International, Inc."
+ },
+ "21": {
+  "cik_str": 27419,
+  "ticker": "TGT",
+  "title": "TARGET CORP"
+ },
+ "22": {
+  "cik_str": 745732,
+  "ticker": "ROST",
+  "title": "ROSS STORES, INC."
+ },
+ "23": {
+  "cik_str": 898173,
+  "ticker": "ORLY",
+  "title": "O REILLY AUTOMOTIVE INC"
+ },
+ "24": {
+  "cik_str": 320187,
+  "ticker": "NKE",
+  "title": "NIKE, Inc."
+ },
+ "25": {
+  "cik_str": 56873,
+  "ticker": "KR",
+  "title": "KROGER CO"
+ },
+ "26": {
+  "cik_str": 55785,
+  "ticker": "KMB",
+  "title": "KIMBERLY CLARK CORP"
+ },
+ "27": {
+  "cik_str": 29534,
+  "ticker": "DG",
+  "title": "DOLLAR GENERAL CORP"
+ },
+ "28": {
+  "cik_str": 719955,
+  "ticker": "WSM",
+  "title": "WILLIAMS SONOMA INC"
+ },
+ "29": {
+  "cik_str": 916365,
+  "ticker": "TSCO",
+  "title": "TRACTOR SUPPLY CO /DE/"
+ },
+ "30": {
+  "cik_str": 764478,
+  "ticker": "BBY",
+  "title": "BEST BUY CO INC"
+ },
+ "31": {
+  "cik_str": 1507079,
+  "ticker": "FND",
+  "title": "Floor & Decor Holdings, Inc."
+ },
+ "32": {
+  "cik_str": 1712189,
+  "ticker": "TH",
+  "title": "Target Hospitality Corp."
+ },
+ "33": {
+  "cik_str": 866787,
+  "ticker": "AZO",
+  "title": "AUTOZONE INC"
+ },
+ "34": {
+  "cik_str": 1652044,
+  "ticker": "GOOG",
+  "title": "Alphabet Inc."
+ },
+ "35": {
+  "cik_str": 1067983,
+  "ticker": "BRK-A",
+  "title": "BERKSHIRE HATHAWAY INC"
+ }
+}

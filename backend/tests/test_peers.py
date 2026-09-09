@@ -3,7 +3,7 @@ contract, the market-cap band, the pure select_peers rule, and the
 provider plumbing (base defaults, fixture provider, cache delegation).
 
 The rule is deliberately mechanical: same industry, market cap within
-0.33x-3.0x of the target, same currencies. The banker still
+0.2x-5.0x of the target, same currencies. The banker still
 picks the final set; this only proposes candidates.
 """
 
@@ -49,12 +49,12 @@ HD = profile("HD", 320 * B)
 # --- Market-cap band ----------------------------------------------------
 
 
-def test_band_is_a_third_to_three_times_target():
+def test_band_is_a_fifth_to_five_times_target():
     band = market_cap_band(100 * B)
-    assert band.low == pytest.approx(33 * B)
-    assert band.high == 300 * B
-    assert band.low_multiple == MARKET_CAP_LOW_MULTIPLE == 0.33
-    assert band.high_multiple == MARKET_CAP_HIGH_MULTIPLE == 3.0
+    assert band.low == pytest.approx(20 * B)
+    assert band.high == 500 * B
+    assert band.low_multiple == MARKET_CAP_LOW_MULTIPLE == 0.2
+    assert band.high_multiple == MARKET_CAP_HIGH_MULTIPLE == 5.0
 
 
 def test_band_accepts_custom_multiples():
@@ -76,10 +76,10 @@ def test_keeps_same_industry_inside_band_ordered_by_size_similarity():
     # scale, so a mid-cap's list starts with names its own size rather
     # than the largest companies the band admits.
     candidates = [
-        profile("FND", 5 * B),        # too small (< 105.6B)
+        profile("FND", 5 * B),        # too small (< 64B)
         profile("LOW", 115 * B),      # ratio 0.36
         profile("BIG", 900 * B),      # ratio 2.8
-        profile("HUGE", 1_000 * B),   # too big (> 960B)
+        profile("HUGE", 2_000 * B),   # too big (> 1,600B)
         profile("MID", 110 * B),      # ratio 0.34
         profile("NEAR", 400 * B),     # ratio 1.25
     ]

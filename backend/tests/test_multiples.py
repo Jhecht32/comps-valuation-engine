@@ -179,3 +179,25 @@ class TestLTMDilutedEPS:
         assert ltm_diluted_eps(
             net_income=120 * M, preferred_dividends=0.0, nci_income=0.0, diluted_shares=0
         ).value is None
+
+
+# --- EBITDA margin ---------------------------------------------------------
+
+
+def test_ebitda_margin_is_ebitda_over_revenue_or_none():
+    from datetime import date
+
+    from app.valuation.models import LTMFinancials, LTMMethod
+    from app.valuation.multiples import ebitda_margin
+
+    def ltm(revenue, ebitda):
+        return LTMFinancials(
+            revenue=revenue, gross_profit=None, ebitda=ebitda, ebit=None, net_income=None,
+            as_of=date(2026, 8, 2), method=LTMMethod.QUARTERLY, flags=[],
+        )
+
+    assert ebitda_margin(ltm(200.0, 30.0)) == 0.15
+    assert ebitda_margin(ltm(200.0, -10.0)) == -0.05  # a loss-making margin is still a margin
+    assert ebitda_margin(ltm(None, 30.0)) is None
+    assert ebitda_margin(ltm(200.0, None)) is None
+    assert ebitda_margin(ltm(0.0, 30.0)) is None and ebitda_margin(ltm(-5.0, 30.0)) is None

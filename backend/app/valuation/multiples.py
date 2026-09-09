@@ -84,6 +84,15 @@ def _ratio(numerator: float, denominator: float | None, label: str) -> MultipleV
     return MultipleValue(value=numerator / denominator, is_nm=False)
 
 
+def ebitda_margin(ltm: LTMFinancials) -> float | None:
+    """LTM EBITDA as a fraction of LTM revenue, the same figures the
+    comps table shows. None when either is unreported or revenue is not
+    positive: a margin on zero or negative revenue has no meaning."""
+    if ltm.ebitda is None or ltm.revenue is None or ltm.revenue <= 0:
+        return None
+    return ltm.ebitda / ltm.revenue
+
+
 def compute_multiples(
     *,
     enterprise_value: float,

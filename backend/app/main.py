@@ -2,10 +2,13 @@
 
     uvicorn app.main:app --reload
 
-create_app takes the inner market data provider (yfinance by default)
-and a clock; at startup the lifespan wraps the provider in CachedProvider
-so every request shares one TTL cache, and exposes it on app.state.
-Tests pass a fixture provider and a fixed date.
+create_app takes the inner market data provider (yfinance by default),
+a proxy peer source (SEC EDGAR by default, but only when the provider
+is also defaulted, so a test that injects a provider never reaches the
+network; set COMPS_PROXY_PEERS=off to run without it), and a clock; at
+startup the lifespan wraps the provider in CachedProvider so every
+request shares one TTL cache, and exposes both on app.state. Tests pass
+a fixture provider, a fixture proxy source, and a fixed date.
 
 The single-file frontend in ../frontend is served at / from the same
 app, so no separate static server (and no CORS) is needed locally.
@@ -31,9 +34,11 @@ from app.data.provider import (
     PeerDiscoveryUnavailableError,
     TickerNotFoundError,
 )
+from app.data.proxy_peers import ProxyPeerSource
 from app.services import ErrorCode, InsufficientDataError, TickerError, ticker_error
 
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+PROXY_PEERS_ENV = "COMPS_PROXY_PEERS"
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 # Most specific first; Starlette matches handlers by the exception's MRO.
@@ -50,6 +55,14 @@ def _default_provider() -> MarketDataProvider:
     from app.data.yfinance_provider import YFinanceProvider  # pulls in pandas
 
     return YFinanceProvider()
+
+
+def _default_proxy_source() -> ProxyPeerSource | None:
+    if os.environ.get(PROXY_PEERS_ENV, "").strip().lower() in {"0", "off", "false", "no"}:
+        return None
+    from app.data.edgar import EdgarProxyPeerSource
+
+    return EdgarProxyPeerSource()
 
 
 def _cors_origins() -> list[str]:
@@ -89,6 +102,7 @@ def _register_error_handlers(app: FastAPI) -> None:
 def create_app(
     *,
     provider: MarketDataProvider | None = None,
+    proxy_source: ProxyPeerSource | None = None,
     today: Callable[[], date] = date.today,
     cors_origins: list[str] | None = None,
     frontend_dir: Path | None = FRONTEND_DIR,
@@ -100,6 +114,11 @@ def create_app(
         inner = provider if provider is not None else _default_provider()
         app.state.inner_provider = inner
         app.state.provider = CachedProvider(inner)
+        # EDGAR is the default only alongside the default provider: an
+        # injected provider with no proxy source means "offline".
+        app.state.proxy_source = (
+            proxy_source if proxy_source is not None else (_default_proxy_source() if provider is None else None)
+        )
         yield
 
     app = FastAPI(
