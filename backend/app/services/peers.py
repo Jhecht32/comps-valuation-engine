@@ -11,13 +11,16 @@ reader to curate.
    talent, so Nike's names Microsoft, Cisco, and Kimberly-Clark, and
    Nike's business comparables (adidas, Puma, Deckers, Skechers) are not
    on it at all. The extracted list is filtered for business
-   comparability: a peer is kept only if it shares the target's sector
-   and its LTM EBITDA margin (the engine's own figure) is within
-   MARGIN_BAND of the target's in relative terms. Every name removed is returned
-   with its reason so it can be added back; names the SEC's company
-   list cannot map to a ticker are reported too. The step contributes
-   when the extraction reads at least MEDIUM confidence; survivors keep
-   the filer's order and are not screened by size.
+   comparability: a peer is kept only if it shares the target's sector,
+   sits inside the same market-cap band the screen uses (a board picks
+   compensation peers for revenue scale, so Amazon sits on Home Depot's
+   list at eight times its size and would swamp the medians), and its
+   LTM EBITDA margin (the engine's own figure) is within MARGIN_BAND of
+   the target's in relative terms. Every name removed is returned with
+   its reason so it can be added back; names the SEC's company list
+   cannot map to a ticker are reported too. The step contributes when
+   the extraction reads at least MEDIUM confidence; survivors keep the
+   filer's order.
 2. Industry screen (SCREEN). Companies Yahoo classifies in the target's
    industry, inside the market-cap band, in the target's currencies,
    closest in size first. Yahoo's industries are coarse ("Specialty
@@ -51,6 +54,7 @@ from app.data.proxy_peers import Confidence, ProxyPeer, ProxyPeerGroup, ProxyPee
 from app.services.comps import normalise_ticker, value_company
 from app.services.errors import InsufficientDataError
 from app.services.models import (
+    CompanyValuation,
     DroppedProxyPeer,
     PeerSource,
     PeerSuggestions,
@@ -91,6 +95,27 @@ def _multiple(x: float) -> str:
 
 def _pct(x: float) -> str:
     return f"{x * 100:.1f}%"
+
+
+_CURRENCY_SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£"}
+
+
+def format_cap(x: float, currency: str | None) -> str:
+    """A market cap for prose: $2.7tn, $320bn, $5.3bn, $850mn."""
+    prefix = _CURRENCY_SYMBOLS.get(currency or "", f"{currency} " if currency else "")
+    if x >= 1e12:
+        return f"{prefix}{x / 1e12:.1f}tn"
+    if x >= 1e10:
+        return f"{prefix}{x / 1e9:.0f}bn"
+    if x >= 1e9:
+        return f"{prefix}{x / 1e9:.1f}bn"
+    return f"{prefix}{x / 1e6:.0f}mn"
+
+
+def _ratio(x: float) -> str:
+    if x >= 1:
+        return f"{x:.1f}x"  # 8.4x
+    return f"{x:.2f}x" if x >= 0.01 else "<0.01x"  # 0.06x
 
 
 # --- Screen ---------------------------------------------------------------
@@ -169,13 +194,18 @@ def _unavailable_flag(detail: str) -> DataQualityFlag:
     )
 
 
-def _margin_of(provider: MarketDataProvider, ticker: str, today: date) -> tuple[float | None, str | None]:
-    """The engine's LTM EBITDA margin for a ticker, or (None, why not)."""
+def _valued(provider: MarketDataProvider, ticker: str, today: date) -> tuple[CompanyValuation | None, str | None]:
+    """A ticker run through the engine, or (None, why not)."""
     try:
-        valued = value_company(provider.get_company(ticker), today=today)
+        return value_company(provider.get_company(ticker), today=today), None
     except (MarketDataError, InsufficientDataError) as err:
         return None, str(err)
-    return ebitda_margin(valued.ltm), None
+
+
+def _margin_of(provider: MarketDataProvider, ticker: str, today: date) -> tuple[float | None, str | None]:
+    """The engine's LTM EBITDA margin for a ticker, or (None, why not)."""
+    valued, why = _valued(provider, ticker, today)
+    return (None, why) if valued is None else (ebitda_margin(valued.ltm), None)
 
 
 def _build_filter(
@@ -223,9 +253,16 @@ def _build_filter(
 
 
 def _judge(
-    provider: MarketDataProvider, target: CompanyProfile, peer: ProxyPeer, rule: ProxyFilter, today: date
+    provider: MarketDataProvider,
+    target: CompanyProfile,
+    peer: ProxyPeer,
+    rule: ProxyFilter,
+    band: MarketCapBand,
+    today: date,
 ) -> SuggestedPeer | DroppedProxyPeer:
-    """Apply the comparability filter to one proxy name."""
+    """Apply the comparability filter to one proxy name. The tests that
+    need only the profile (currency, sector, size) run before the margin
+    test, which values the company from its statements."""
 
     def dropped(kind: ProxyDropRule, reason: str, profile: CompanyProfile | None = None, margin: float | None = None):
         return DroppedProxyPeer(
@@ -235,6 +272,7 @@ def _judge(
             reason=reason,
             sector=profile.sector if profile else None,
             industry=profile.industry if profile else None,
+            market_cap=profile.market_cap if profile else None,
             ebitda_margin=margin,
         )
 
@@ -255,11 +293,33 @@ def _judge(
             where += f" ({profile.industry})"
         return dropped(ProxyDropRule.SECTOR, f"{where}, not {rule.sector}", profile)
 
+    valued: CompanyValuation | None = None
+    if profile.market_cap is None:
+        # Yahoo's profile carries no market cap for some names (AutoZone,
+        # at the time of writing) that the engine values without trouble,
+        # so its own figure, share price × diluted shares, stands in and
+        # travels with the name.
+        valued, why = _valued(provider, peer.ticker, today)
+        if valued is None:
+            return dropped(ProxyDropRule.UNVALUABLE, why, profile)
+        profile = profile.model_copy(update={"market_cap": valued.bridge.equity_value})
+    if not band.low <= profile.market_cap <= band.high:
+        currency = target.price_currency
+        return dropped(
+            ProxyDropRule.SIZE,
+            f"market cap {format_cap(profile.market_cap, currency)} against {target.ticker}'s {format_cap(target.market_cap, currency)} "
+            f"({_ratio(profile.market_cap / target.market_cap)}), outside {_multiple(band.low_multiple)}x–"
+            f"{_multiple(band.high_multiple)}x ({format_cap(band.low, currency)}–{format_cap(band.high, currency)})",
+            profile,
+        )
+
     margin: float | None = None
     if rule.ebitda_margin is not None:
-        margin, why = _margin_of(provider, peer.ticker, today)
-        if why is not None:
+        if valued is None:
+            valued, why = _valued(provider, peer.ticker, today)
+        if valued is None:
             return dropped(ProxyDropRule.UNVALUABLE, why, profile)
+        margin = ebitda_margin(valued.ltm)
         if margin is None:
             return dropped(ProxyDropRule.NO_MARGIN, "LTM EBITDA margin unavailable (revenue or EBITDA not reported)", profile)
         if not rule.margin_low <= margin <= rule.margin_high:
@@ -277,6 +337,7 @@ def _dropped_flag(target: CompanyProfile, total: int, dropped: list[DroppedProxy
     counts = {rule: sum(1 for d in dropped if d.rule is rule) for rule in ProxyDropRule}
     names = {
         ProxyDropRule.SECTOR: "outside the sector",
+        ProxyDropRule.SIZE: "outside the size band",
         ProxyDropRule.MARGIN: "EBITDA margin too far",
         ProxyDropRule.NO_MARGIN: "no margin",
         ProxyDropRule.UNVALUABLE: "cannot be valued",
@@ -296,6 +357,7 @@ def _proxy_step(
     source: ProxyPeerSource,
     provider: MarketDataProvider,
     target: CompanyProfile,
+    band: MarketCapBand,
     flags: list[DataQualityFlag],
     *,
     today: date,
@@ -333,7 +395,7 @@ def _proxy_step(
     for peer in group.peers:
         if peer.ticker == target.ticker:
             continue  # a filer is nobody's peer; the SEC list can map a target's own name
-        verdict = _judge(provider, target, peer, rule, today)
+        verdict = _judge(provider, target, peer, rule, band, today)
         (kept if isinstance(verdict, SuggestedPeer) else dropped).append(verdict)
 
     if group.unmatched:
@@ -406,7 +468,7 @@ def suggest_peers(
     dropped: list[DroppedProxyPeer] = []
     rule: ProxyFilter | None = None
     if proxy_source is not None:
-        group, kept, dropped, rule = _proxy_step(proxy_source, provider, profile, flags, today=today or date.today())
+        group, kept, dropped, rule = _proxy_step(proxy_source, provider, profile, band, flags, today=today or date.today())
 
     basis = MatchBasis.INDUSTRY if profile.industry is not None else MatchBasis.SECTOR
     if basis is MatchBasis.SECTOR:

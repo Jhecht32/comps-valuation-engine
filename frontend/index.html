@@ -80,6 +80,20 @@
          color: var(--accent); border: 1px solid var(--accent); border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
   .n { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  #field { display: block; max-width: 100%; font-variant-numeric: tabular-nums; }
+  #field text { font-family: inherit; font-size: 12px; fill: var(--ink); }
+  #field .ff-n, #field .ff-value, #field .ff-tick, #field .ff-axis-title { fill: var(--muted); }
+  #field .ff-label { font-size: 13px; }
+  #field .ff-value, #field .ff-tick, #field .ff-axis-title { font-size: 11px; }
+  #field .ff-price-label { font-weight: 600; }
+  #field .ff-halo { paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+  #field .ff-grid, #field .ff-axis { stroke: var(--line); stroke-width: 1; shape-rendering: crispEdges; }
+  #field .ff-range { fill: var(--accent); }
+  #field g.ff-row:hover .ff-range, #field g.ff-row:focus .ff-range { fill: #3a6cc4; }
+  #field g.ff-row:focus { outline: none; }
+  #field .ff-median-ring { stroke: var(--bg); stroke-width: 6; }
+  #field .ff-median { stroke: var(--ink); stroke-width: 2; }
+  #field .ff-price { stroke: var(--ink); stroke-width: 2; }
   details.help { margin-top: 18px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
   details.help summary { cursor: pointer; padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--accent); list-style: none; }
   details.help summary::-webkit-details-marker { display: none; }
@@ -120,6 +134,7 @@
     <div class="actions">
       <button type="submit" id="run" title="GET /api/peers/{ticker} for candidates, then POST /api/comps">Run</button>
       <button type="button" class="secondary" id="rerun" title="POST /api/comps with the peers listed, without re-fetching suggestions">Run with listed peers</button>
+      <button type="button" class="secondary" id="download" title="POST /api/comps/export with the peers listed: the run as a formatted workbook (Comps, Statistics, Implied, Sources)">Download .xlsx</button>
     </div>
   </form>
   <div id="status"></div>
@@ -144,7 +159,7 @@
       <p><b>Numerator and denominator must match.</b> EV pairs with EBITDA, EBIT, and revenue, figures available to all capital providers. Price pairs with EPS, which is after interest and belongs to shareholders only. EV over net income is meaningless.</p>
       <p><b>LTM.</b> Last twelve months, not the last fiscal year. It keeps every company on a current and comparable footing.</p>
       <p><b>NM.</b> Not meaningful. A multiple with a negative or near-zero denominator is arithmetic without economic content, so it is excluded from the statistics rather than allowed to distort the median.</p>
-      <p><b>Reading the implied range.</b> Peer multiples applied back to the target produce a range, not a price. Low and high are the 25th and 75th percentiles of the peer set; mid is the median.</p>
+      <p><b>Reading the implied range.</b> Peer multiples applied back to the target produce a range, not a price. Low and high are the 25th and 75th percentiles of the peer set; mid is the median. The football field draws the same ranges as bars against a line at the current share price: a bar the line passes through is a methodology on which the stock trades in line with its peers, a bar wholly to the right says the peers imply more than the market pays, and to the left less.</p>
       <p><b>Where the candidates come from.</b> Two sources, combined rather than ranked. <b>Comp peers</b>: the compensation peer group in the target's latest proxy statement, the names its board benchmarks executive pay against. Boards pick those for revenue scale and competition for talent, not business similarity (Nike lists Microsoft, Cisco, and Kimberly-Clark, and none of adidas, Puma, or Deckers), so the list is filtered first: a name is kept only if it shares the target's sector and its LTM EBITDA margin is within 50% of the target's (a 9.9% target admits 5.0%&ndash;14.9%), and every name removed is listed with its reason and can be added back. <b>Screen</b>: companies Yahoo files in the target's industry at a comparable size. Yahoo's industries are coarse, so a screen match is a candidate, not a peer. Each candidate is tagged with the source(s) that named it; a name in both is the strongest signal the tool can give and is listed first.</p>
       <p><b>The caveat.</b> Neither source is a peer set. Comp peer groups reflect pay benchmarking; industry screens are too coarse. The output is only as good as the peer set, and choosing peers is judgment: remove and add names before trusting the numbers.</p>
     </div>
@@ -202,6 +217,12 @@
       </div>
     </div>
 
+    <div id="field-wrap">
+      <h2>Football field</h2>
+      <p class="note" id="field-note"></p>
+      <svg id="field" role="img"></svg>
+    </div>
+
     <h2>Data quality</h2>
     <div class="grid">
       <div><h3>Flags</h3><ul id="flags"></ul></div>
@@ -225,6 +246,7 @@
 
   var fmt1 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   var fmt2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var fmt0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
   var MULTIPLES = [
     ["ev_revenue", "EV / Revenue"],
@@ -512,10 +534,12 @@
     clear(list);
     var dropped = s.proxy_dropped || [];
     if (!dropped.length) { wrap.hidden = true; return; }
-    var f = s.proxy_filter, rule = "Kept only if ";
+    var f = s.proxy_filter, band = s.market_cap_band, rule = "Kept only if ";
     rule += f && f.sector ? "in the " + f.sector + " sector" : "in any sector (the target has none)";
+    rule += ", with a market cap " + fmt1.format(band.low_multiple) + "x\u2013" + fmt1.format(band.high_multiple) + "x " +
+      s.target.ticker + "\u2019s (" + bn(band.low) + "\u2013" + bn(band.high) + ", the screen\u2019s band)";
     rule += f && f.ebitda_margin != null
-      ? " and LTM EBITDA margin within " + Math.round(f.margin_band * 100) + "% of " + s.target.ticker + "\u2019s " +
+      ? ", and LTM EBITDA margin within " + Math.round(f.margin_band * 100) + "% of " + s.target.ticker + "\u2019s " +
         fmt1.format(f.ebitda_margin * 100) + "% (" + fmt1.format(f.margin_low * 100) + "%\u2013" + fmt1.format(f.margin_high * 100) + "%)."
       : " (the margin test could not be applied).";
     $("dropped-rule").textContent = rule + " Compensation peers are chosen for pay benchmarking; add a name back if it is a business comparable.";
@@ -545,6 +569,116 @@
     return true;
   }
 
+  // --- Football field ---------------------------------------------------------
+  // The implied table drawn: one floating bar per methodology from the 25th
+  // to the 75th percentile implied value per share, a tick at the mid, and
+  // a line at the current share price. Plain SVG, sized to the container in
+  // pixels so text stays the page's size at any width.
+
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  function svgEl(tag, attrs, text) {
+    var node = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  // A tick step of 1, 2, or 5 times a power of ten that gives about `count` ticks.
+  function niceStep(span, count) {
+    var raw = span / count, mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), unit = raw / mag;
+    return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10) * mag;
+  }
+
+  function renderField(r) {
+    var svg = $("field"), note = $("field-note"), t = r.target, basis = r.implied.mid_basis;
+    clear(svg);
+    var rows = MULTIPLES.map(function (pair) { return { label: pair[1], im: r.implied[pair[0]] }; })
+      .filter(function (x) { return !x.im.is_nm && x.im.low != null && x.im.high != null; });
+    var skipped = MULTIPLES.length - rows.length;
+    if (!rows.length) {
+      note.textContent = "No methodology produced a meaningful range, so there is nothing to chart.";
+      svg.hidden = true;
+      return;
+    }
+    note.textContent = "Each bar spans the 25th to 75th percentile implied value per share; the tick is the peer " + basis +
+      ". The line is " + t.ticker + "'s current share price, " + fmt2.format(t.share_price) + " (" + t.price_as_of + ")." +
+      (skipped ? " " + skipped + (skipped === 1 ? " methodology is NM and is" : " methodologies are NM and are") + " not drawn." : "");
+    svg.hidden = false;
+    svg.setAttribute("aria-label", "Football field: implied value per share by methodology against " + t.ticker +
+      "'s share price of " + fmt2.format(t.share_price) + ". The values are in the implied valuation table above.");
+
+    var price = t.share_price;
+    var W = Math.max(480, svg.parentNode.clientWidth || 720);
+    var left = 172, right = 32, top = 32, bottom = 40, rowH = 34, barH = 14;
+    var endPad = 60;  // room in the scale for a value label outside the lowest and highest bar ends
+    var plotH = rows.length * rowH, H = top + plotH + bottom, plotW = W - left - right;
+    var lo = price, hi = price;
+    rows.forEach(function (x) {
+      lo = Math.min(lo, x.im.low, x.im.high);
+      hi = Math.max(hi, x.im.low, x.im.high);
+    });
+    if (hi === lo) { lo -= 1; hi += 1; }
+    var perPx = (hi - lo) / (plotW - 2 * endPad);
+    lo -= endPad * perPx; hi += endPad * perPx;
+    var step = niceStep(hi - lo, 6), tickFmt = step >= 1 ? fmt0 : fmt2;
+    var x = function (v) { return left + (v - lo) / (hi - lo) * plotW; };
+    svg.setAttribute("width", W);
+    svg.setAttribute("height", H);
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+    // Layers, back to front: grid and axis, bars, the price line, then every
+    // piece of text, so the line crosses bars but never a label.
+    var grid = svgEl("g"), bars = svgEl("g"), line = svgEl("g"), text = svgEl("g");
+    [grid, bars, line, text].forEach(function (g) { svg.appendChild(g); });
+
+    var first = Math.ceil(lo / step);
+    for (var i = first; i * step <= hi; i++) {
+      var v = i * step, tx = x(v);
+      grid.appendChild(svgEl("line", { x1: tx, x2: tx, y1: top, y2: top + plotH, class: "ff-grid" }));
+      text.appendChild(svgEl("text", { x: tx, y: top + plotH + 16, "text-anchor": "middle", class: "ff-tick" }, signed(v, tickFmt)));
+    }
+    grid.appendChild(svgEl("line", { x1: left, x2: left + plotW, y1: top + plotH, y2: top + plotH, class: "ff-axis" }));
+    text.appendChild(svgEl("text", { x: left + plotW, y: top + plotH + 32, "text-anchor": "end", class: "ff-axis-title" },
+      (t.reporting_currency ? t.reporting_currency + " " : "") + "per share"));
+
+    var px = x(price);
+    var priceLine = svgEl("line", { x1: px, x2: px, y1: top - 6, y2: top + plotH, class: "ff-price" });
+    priceLine.appendChild(svgEl("title", null, t.ticker + " share price " + fmt2.format(price) + " on " + t.price_as_of));
+    line.appendChild(priceLine);
+    var priceText = "Price " + fmt2.format(price), half = priceText.length * 3.6;
+    text.appendChild(svgEl("text", {
+      x: Math.min(Math.max(px, left + half), W - right - half), y: top - 12, "text-anchor": "middle", class: "ff-price-label ff-halo"
+    }, priceText));
+
+    rows.forEach(function (row, i) {
+      var im = row.im, cy = top + i * rowH + rowH / 2;
+      var x0 = x(Math.min(im.low, im.high)), x1 = x(Math.max(im.low, im.high));
+      var g = svgEl("g", { class: "ff-row", tabindex: 0 });
+      g.appendChild(svgEl("title", null, row.label + " (n = " + im.n + "): low " + fmt2.format(im.low) +
+        (im.mid == null ? "" : ", " + basis + " " + fmt2.format(im.mid)) + ", high " + fmt2.format(im.high) + " per share"));
+      g.appendChild(svgEl("rect", { x: x0, y: cy - barH / 2, width: Math.max(2, x1 - x0), height: barH, rx: 3, class: "ff-range" }));
+      if (im.mid != null) {
+        var mx = x(im.mid), y1 = cy - barH / 2 - 3, y2 = cy + barH / 2 + 3;
+        g.appendChild(svgEl("line", { x1: mx, x2: mx, y1: y1, y2: y2, class: "ff-median-ring" }));
+        g.appendChild(svgEl("line", { x1: mx, x2: mx, y1: y1, y2: y2, class: "ff-median" }));
+      }
+      bars.appendChild(g);
+
+      var label = svgEl("text", { x: left - 14, y: cy + 4, "text-anchor": "end", class: "ff-label" }, row.label);
+      label.appendChild(svgEl("tspan", { dx: 6, class: "ff-n" }, "n = " + im.n));
+      text.appendChild(label);
+      text.appendChild(svgEl("text", { x: x0 - 6, y: cy + 4, "text-anchor": "end", class: "ff-value ff-halo" }, perShare(im.low).text));
+      text.appendChild(svgEl("text", { x: x1 + 6, y: cy + 4, class: "ff-value ff-halo" }, perShare(im.high).text));
+    });
+  }
+
+  var lastResult = null, resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { if (lastResult && !$("results").hidden) renderField(lastResult); }, 120);
+  });
+
   function renderQuality(r) {
     var flags = $("flags"), errors = $("errors");
     clear(flags); clear(errors);
@@ -561,12 +695,14 @@
   }
 
   function render(r) {
+    lastResult = r;
     renderHeadline(r);
     renderComps(r);
     renderStats(r.statistics);
     renderImplied(r);
     renderQuality(r);
     $("results").hidden = false;
+    renderField(r);  // after unhiding: it measures its container
   }
 
   // --- API ------------------------------------------------------------------
@@ -595,6 +731,36 @@
     });
   }
 
+  // The same run as a workbook. The body is bytes, so this goes around
+  // api(); an error response is still the JSON error shape.
+  function exportComps(target, peers) {
+    return fetch(API + "/api/comps/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: target, peers: peers, mid_basis: "median" })
+    }).catch(function (e) {
+      throw new Error("Could not reach the API at " + API + " (" + e.message + ").");
+    }).then(function (res) {
+      if (res.ok) {
+        var disposition = res.headers.get("Content-Disposition") || "";
+        var match = /filename="([^"]+)"/.exec(disposition);
+        return res.blob().then(function (blob) { return { blob: blob, filename: match ? match[1] : target + "_comps.xlsx" }; });
+      }
+      return res.json().catch(function () { return null; }).then(function (body) {
+        throw new Error(body && body.message ? body.code + ": " + body.message : res.status + " " + res.statusText);
+      });
+    });
+  }
+
+  function saveBlob(blob, filename) {
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
   // --- Controller -----------------------------------------------------------
 
   function parsePeers(text) {
@@ -605,7 +771,23 @@
   function status(text) { $("status").textContent = text; }
   function showError(text) { $("error").textContent = text; $("error").hidden = false; }
   function hideError() { $("error").hidden = true; }
-  function setBusy(busy) { $("run").disabled = busy; $("rerun").disabled = busy; }
+  function setBusy(busy) { $("run").disabled = busy; $("rerun").disabled = busy; $("download").disabled = busy; }
+
+  function download() {
+    var target = $("ticker").value.trim().toUpperCase(), peers = parsePeers($("peers").value);
+    hideError();
+    if (!target) { showError("Enter a target ticker."); return; }
+    if (!peers.length) { showError("Enter at least one peer ticker, or Run to fetch candidates first."); return; }
+    setBusy(true);
+    status("Building the workbook for " + target + " against " + peers.length + " peer" + (peers.length === 1 ? "" : "s") + "…");
+    exportComps(target, peers).then(function (file) {
+      saveBlob(file.blob, file.filename);
+      status("Downloaded " + file.filename + ".");
+    }).catch(function (err) {
+      showError(err.message);
+      status("");
+    }).then(function () { setBusy(false); });
+  }
 
   function run(suggest) {
     var target = $("ticker").value.trim().toUpperCase();
@@ -664,6 +846,7 @@
 
   $("form").addEventListener("submit", function (e) { e.preventDefault(); run(true); });
   $("rerun").addEventListener("click", function () { run(false); });
+  $("download").addEventListener("click", download);
   $("reset").addEventListener("click", function () {
     if (!suggested) return;
     $("peers").value = suggested.peers.join(", ");

@@ -12,7 +12,7 @@ A peer failing inside POST /api/comps is not an HTTP error: it is
 reported in the response's errors map next to the peers that succeeded.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from app.api.deps import ProviderDep, ProxySourceDep, TodayDep
 from app.api.schemas import (
@@ -24,7 +24,16 @@ from app.api.schemas import (
     PeersResponse,
     TickerPath,
 )
-from app.services import run_comps, suggest_peers, value_company
+from app.data.provider import MarketDataError
+from app.services import (
+    XLSX_MEDIA_TYPE,
+    InsufficientDataError,
+    build_workbook,
+    export_filename,
+    run_comps,
+    suggest_peers,
+    value_company,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -62,6 +71,39 @@ def post_comps(body: CompsRequest, provider: ProviderDep, today: TodayDep) -> Co
     )
 
 
+@router.post(
+    "/comps/export",
+    response_class=Response,
+    responses={
+        **_ERRORS,
+        200: {
+            "content": {XLSX_MEDIA_TYPE: {"schema": {"type": "string", "format": "binary"}}},
+            "description": "Workbook with Comps, Statistics, Implied, and Sources sheets",
+        },
+    },
+)
+def post_comps_export(body: CompsRequest, provider: ProviderDep, proxy_source: ProxySourceDep, today: TodayDep) -> Response:
+    """The same run as POST /api/comps, as a formatted .xlsx attachment
+    named {TICKER}_comps_{YYYY-MM-DD}.xlsx. The Sources sheet adds the
+    audit trail: the as-of dates, the proxy filing, every candidate
+    with its source tags, every name filtered out with its reason, and
+    every flag. The peer suggestion is re-run for it; if that fails the
+    sheet says so and the export still succeeds."""
+    result = run_comps(provider, target=body.target, peers=body.peers, mid_basis=body.mid_basis, today=today)
+    suggestions, why = None, None
+    try:
+        suggestions = suggest_peers(provider, body.target, proxy_source=proxy_source, today=today)
+    except (MarketDataError, InsufficientDataError) as err:
+        why = str(err)
+    content = build_workbook(result, suggestions, requested_peers=body.peers, suggestion_error=why)
+    filename = export_filename(result.target.ticker, result.as_of)
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get(
     "/peers/{ticker}",
     response_model=PeersResponse,
@@ -70,8 +112,9 @@ def post_comps(body: CompsRequest, provider: ProviderDep, today: TodayDep) -> Co
 def get_peers(ticker: TickerPath, provider: ProviderDep, proxy_source: ProxySourceDep, today: TodayDep) -> PeersResponse:
     """Candidate peers from two sources combined: the peer group
     disclosed in the target's latest proxy statement (DEF 14A), filtered
-    for business comparability, and a screen on the target's industry
-    (market cap within 0.2x-5.0x, same currencies). Each name carries
+    for business comparability (sector, market cap, EBITDA margin), and
+    a screen on the target's industry (same currencies). The market-cap
+    band, 0.2x-5.0x the target's, applies to both. Each name carries
     the source(s) that suggested it; names in both come first. Neither
     source is a peer set on its own, so curate the list. proxy_label and
     screen_label describe each source; flags explain every unreadable

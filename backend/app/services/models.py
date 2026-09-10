@@ -124,6 +124,7 @@ class SuggestedPeer(CompanyProfile):
 
 class ProxyDropRule(str, Enum):
     SECTOR = "sector"          # outside the target's sector
+    SIZE = "size"              # market cap outside the band the screen uses (market_cap_band on the response)
     MARGIN = "margin"          # LTM EBITDA margin further from the target's than the tolerance
     NO_MARGIN = "no_margin"    # LTM EBITDA margin could not be computed
     UNVALUABLE = "unvaluable"  # no market data, too little of it, or another currency
@@ -139,17 +140,23 @@ class DroppedProxyPeer(BaseModel):
     reason: str
     sector: str | None = None
     industry: str | None = None
+    market_cap: float | None = None
     ebitda_margin: float | None = None
 
 
 class ProxyFilter(BaseModel):
     """The business-comparability test applied to a proxy peer group: a
-    peer must share the target's sector, and its LTM EBITDA margin must
-    sit within margin_band of the target's in relative terms (0.5 = no
-    more than 50% above or below, so 5.0%-14.9% for a 9.9% target);
-    margin_low and margin_high are that band's edges. A None sector or
-    margin means that test could not be applied and was skipped, which
-    PROXY_FILTER_PARTIAL flags."""
+    peer must share the target's sector, sit inside the same market-cap
+    band the industry screen uses (market_cap_band on the response, so a
+    compensation peer picked for revenue scale at eight times the
+    target's size is dropped as the screen would drop it), and its LTM
+    EBITDA margin must sit within margin_band of the target's in
+    relative terms (0.5 = no more than 50% above or below, so 5.0%-14.9%
+    for a 9.9% target); margin_low and margin_high are that band's
+    edges. A None sector or margin means that test could not be applied
+    and was skipped, which PROXY_FILTER_PARTIAL flags; the size test
+    always applies, since a target without a market cap cannot be
+    screened at all."""
 
     sector: str | None
     ebitda_margin: float | None

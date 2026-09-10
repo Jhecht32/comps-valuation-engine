@@ -22,7 +22,7 @@ from app.data.proxy_peers import (
     ProxyPeer,
     ProxyPeerGroup,
 )
-from app.services import PeerSource, ProxyDropRule, suggest_peers
+from app.services import PeerSource, ProxyDropRule, suggest_peers, value_company
 from app.services.peers import MARGIN_BAND
 from app.valuation.models import FlagCode
 
@@ -93,7 +93,9 @@ def provider():
     # LOW alone: THINT sits under the band, and the rest are other
     # industries. LOW is also in every proxy list below, so it is the
     # name both sources agree on. HD's margin is 14.97%, so the proxy
-    # filter's band is 7.49%-22.46%.
+    # filter's band is 7.49%-22.46%. The same market-cap band applies to
+    # proxy names, so every other profile here sits inside it and only
+    # the rule a test is about fires; the size rule has its own test.
     return ScreenCounter(
         {
             "HD": snapshot("HD"),
@@ -113,12 +115,12 @@ def provider():
             "LOW": profile("LOW", 115 * B),
             "ROST": profile("ROST", 74 * B, industry="Apparel Retail"),
             "TJX": profile("TJX", 142 * B, industry="Apparel Retail"),
-            "TSCO": profile("TSCO", 18 * B, industry="Specialty Retail"),
+            "TSCO": profile("TSCO", 80 * B, industry="Specialty Retail"),
             "MCD": profile("MCD", 220 * B, industry="Restaurants"),
-            "BBY": profile("BBY", 19 * B, industry="Specialty Retail"),
+            "BBY": profile("BBY", 80 * B, industry="Specialty Retail"),
             "AZO": profile("AZO", 69 * B, industry="Auto Parts"),      # profile but no snapshot
             "ORLY": profile("ORLY", 70 * B, industry="Auto Parts"),
-            "NOMARG": profile("NOMARG", 20 * B, industry="Specialty Retail"),
+            "NOMARG": profile("NOMARG", 80 * B, industry="Specialty Retail"),
             "THINT": profile("THINT", 50 * B),
             "WMT": profile("WMT", 800 * B, **DEFENSIVE),
             "TGT": profile("TGT", 50 * B, **DEFENSIVE),
@@ -225,6 +227,62 @@ def test_limit_applies_to_the_ordered_union(provider):
 
 
 # --- The comparability filter ---------------------------------------------------
+
+
+def test_size_band_applies_to_proxy_names_as_it_does_to_the_screen(provider):
+    # A compensation peer is picked for revenue scale, so it can be many
+    # times the target's size (Amazon on HD's list) or a fraction of it;
+    # the screen's 0.2x-5.0x band drops both, with the two market caps
+    # and the band in the reason. Size is tested before the margin: AMZN
+    # and TINY have no snapshot, so a margin test first would have made
+    # them "cannot be valued" instead.
+    provider._profiles["AMZN"] = profile("AMZN", 2_700 * B, industry="Internet Retail")
+    provider._profiles["TINY"] = profile("TINY", 30 * B, industry="Apparel Retail")
+    provider._profiles["EDGE"] = profile("EDGE", 65 * B, industry="Apparel Retail")  # 0.2x of HD: inside
+    provider._snapshots["EDGE"] = snapshot("EDGE", margin=0.14)
+    names = [("AMZN", "Amazon.com, Inc."), ("TINY", "Tiny Inc."), ("EDGE", "Edge Inc."), ("LOW", "Lowe’s Companies, Inc.")]
+    result = suggest(provider, FixtureProxyPeerSource({"HD": group(names)}))
+    assert tagged(result) == [("LOW", BOTH), ("EDGE", PROXY)]
+    assert [(d.ticker, d.rule) for d in result.proxy_dropped] == [("AMZN", ProxyDropRule.SIZE), ("TINY", ProxyDropRule.SIZE)]
+    by_ticker = {d.ticker: d for d in result.proxy_dropped}
+    assert by_ticker["AMZN"].reason == "market cap $2.7tn against HD's $320bn (8.4x), outside 0.2x–5.0x ($64bn–$1.6tn)"
+    assert by_ticker["AMZN"].market_cap == 2_700 * B and by_ticker["AMZN"].industry == "Internet Retail"
+    assert by_ticker["AMZN"].sector == "Consumer Cyclical" and by_ticker["AMZN"].ebitda_margin is None
+    assert by_ticker["TINY"].reason == "market cap $30bn against HD's $320bn (0.09x), outside 0.2x–5.0x ($64bn–$1.6tn)"
+    assert [f.code for f in result.flags] == [FlagCode.PROXY_PEERS_DROPPED, FlagCode.THIN_PEER_SET]
+    assert "2 of 4 compensation peers" in result.flags[0].message and "(outside the size band: 2)" in result.flags[0].message
+
+
+def test_a_name_without_a_profile_market_cap_is_sized_on_the_engines_own_figure(provider):
+    # Yahoo's profile has no market cap for some names the engine values
+    # without trouble (AutoZone, when this was written), so share price
+    # times diluted shares stands in, travels with the name, and sizes
+    # it; a name the engine cannot value either is dropped with that error.
+    for t in ("ENGCAP", "ENGSMALL", "NOCAP"):
+        provider._profiles[t] = profile(t, None, industry="Apparel Retail")
+    provider._snapshots["ENGCAP"] = snapshot("ENGCAP", margin=0.14)
+    provider._snapshots["ENGSMALL"] = snapshot("ENGSMALL", margin=0.14, share_price=1.0)
+    engine_cap = value_company(provider._snapshots["ENGCAP"], today=TODAY).bridge.equity_value
+    small_cap = value_company(provider._snapshots["ENGSMALL"], today=TODAY).bridge.equity_value
+    assert 64 * B <= engine_cap <= 1_600 * B and small_cap < 64 * B  # the fixture is HD-shaped, so it sits in HD's band
+    names = [("ENGCAP", "Engcap Inc."), ("ENGSMALL", "Engsmall Inc."), ("NOCAP", "Nocap Inc."), ("LOW", "Lowe’s Companies, Inc.")]
+    result = suggest(provider, FixtureProxyPeerSource({"HD": group(names)}))
+    assert tagged(result) == [("LOW", BOTH), ("ENGCAP", PROXY)]
+    assert result.peers[1].market_cap == engine_cap and result.peers[1].ebitda_margin == pytest.approx(0.14)
+    assert [(d.ticker, d.rule) for d in result.proxy_dropped] == [("ENGSMALL", ProxyDropRule.SIZE), ("NOCAP", ProxyDropRule.UNVALUABLE)]
+    assert result.proxy_dropped[0].market_cap == small_cap
+    assert result.proxy_dropped[0].reason == "market cap $996mn against HD's $320bn (<0.01x), outside 0.2x–5.0x ($64bn–$1.6tn)"
+    assert "No market data found for ticker 'NOCAP'" in result.proxy_dropped[1].reason and result.proxy_dropped[1].market_cap is None
+
+
+def test_one_band_sizes_both_sources(provider):
+    # Widening the multiples admits AMZN from the proxy group and THINT
+    # (50B, under 0.2x) from the screen alike.
+    provider._profiles["AMZN"] = profile("AMZN", 2_700 * B, industry="Internet Retail")
+    provider._snapshots["AMZN"] = snapshot("AMZN", margin=0.14)
+    source = FixtureProxyPeerSource({"HD": group([("AMZN", "Amazon.com, Inc."), ("LOW", "Lowe’s Companies, Inc.")])})
+    result = suggest(provider, source, low_multiple=0.1, high_multiple=10.0)
+    assert tagged(result) == [("LOW", BOTH), ("AMZN", PROXY), ("THINT", SCREEN)] and result.proxy_dropped == []
 
 
 def test_unvaluable_and_marginless_names_are_dropped_with_reasons(provider):

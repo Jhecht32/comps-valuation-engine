@@ -6,6 +6,7 @@ do no arithmetic of their own.
 
 from app.services.comps import normalise_ticker, run_comps, value_company
 from app.services.errors import InsufficientDataError, error_code_for, ticker_error
+from app.services.export import XLSX_MEDIA_TYPE, build_workbook, export_filename
 from app.services.models import (
     CompanyValuation,
     CompsResult,
@@ -42,4 +43,7 @@ __all__ = [
     "suggest_peers",
     "ticker_error",
     "value_company",
+    "XLSX_MEDIA_TYPE",
+    "build_workbook",
+    "export_filename",
 ]

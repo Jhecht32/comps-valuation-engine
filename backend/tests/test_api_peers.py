@@ -17,10 +17,12 @@ TODAY = date(2026, 9, 6)
 HD_PROXY_URL = "https://www.sec.gov/Archives/edgar/data/354950/000035495026000090/hd-20260406.htm"
 
 # Recorded snapshots and profiles exist for HD, LOW, FND, TSCO, WSM, all
-# Consumer Cyclical with LTM EBITDA margins of 11%-22% against HD's 15%,
-# so all four pass the filter; an Energy name and an unknown ticker
-# exercise the drops without the network. LOW is also the one recorded
-# name HD's industry screen finds, so it lands in both sources.
+# Consumer Cyclical with LTM EBITDA margins of 11%-22% against HD's 15%.
+# Only LOW ($115bn) sits inside HD's 0.2x-5.0x market-cap band; TSCO
+# ($18bn), WSM ($27bn), and FND ($5bn) are dropped for size, an Energy
+# name for its sector, and an unknown ticker as unvaluable, all without
+# the network. LOW is also the one recorded name HD's industry screen
+# finds, so it lands in both sources.
 XOM = CompanyProfile(
     ticker="XOM", name="Exxon Mobil Corporation", sector="Energy", industry="Oil & Gas Integrated",
     market_cap=500e9, price_currency="USD", reporting_currency="USD",
@@ -59,24 +61,30 @@ def test_peers_are_the_tagged_union_of_the_proxy_group_and_the_screen():
         "Companies Yahoo files under Home Improvement Retail with a market cap 0.2x–5.0x HD's, in its currencies. "
         "Industry classifications are coarse; a screen match is a candidate, not a peer."
     )
-    # LOW first (both sources), then the rest of the proxy group in the filer's order.
-    assert [(p["ticker"], p["sources"]) for p in body["peers"]] == [
-        ("LOW", ["proxy", "screen"]), ("TSCO", ["proxy"]), ("WSM", ["proxy"]), ("FND", ["proxy"]),
-    ]
-    assert body["peers"][1]["name"] == "Tractor Supply Company" and body["peers"][1]["market_cap"] > 0
-    assert [round(p["ebitda_margin"], 3) for p in body["peers"]] == [0.141, 0.121, 0.221, 0.114]
+    # LOW alone survives, named by both sources.
+    assert [(p["ticker"], p["sources"]) for p in body["peers"]] == [("LOW", ["proxy", "screen"])]
+    assert body["peers"][0]["name"] == "Lowe's Companies, Inc." and body["peers"][0]["market_cap"] > 0
+    assert [round(p["ebitda_margin"], 3) for p in body["peers"]] == [0.141]
     assert body["proxy_filter"] == {
         "sector": "Consumer Cyclical", "ebitda_margin": pytest.approx(0.1497, abs=1e-3), "margin_band": 0.5,
         "margin_low": pytest.approx(0.0749, abs=1e-3), "margin_high": pytest.approx(0.2246, abs=1e-3),
     }
-    assert [(d["ticker"], d["rule"]) for d in body["proxy_dropped"]] == [("XOM", "sector"), ("GONE", "unvaluable")]
-    assert body["proxy_dropped"][0]["reason"] == "Energy sector (Oil & Gas Integrated), not Consumer Cyclical"
-    assert body["proxy_dropped"][0]["name"] == "Exxon Mobil Corporation" and body["proxy_dropped"][0]["sector"] == "Energy"
+    assert [(d["ticker"], d["rule"]) for d in body["proxy_dropped"]] == [
+        ("TSCO", "size"), ("WSM", "size"), ("FND", "size"), ("XOM", "sector"), ("GONE", "unvaluable"),
+    ]
+    dropped = {d["ticker"]: d for d in body["proxy_dropped"]}
+    assert dropped["TSCO"]["reason"] == "market cap $18bn against HD's $320bn (0.06x), outside 0.2x–5.0x ($64bn–$1.6tn)"
+    assert dropped["TSCO"]["market_cap"] == pytest.approx(18.23e9, rel=1e-3) and dropped["TSCO"]["ebitda_margin"] is None
+    assert dropped["FND"]["reason"] == "market cap $5.3bn against HD's $320bn (0.02x), outside 0.2x–5.0x ($64bn–$1.6tn)"
+    assert dropped["XOM"]["reason"] == "Energy sector (Oil & Gas Integrated), not Consumer Cyclical"
+    assert dropped["XOM"]["name"] == "Exxon Mobil Corporation" and dropped["XOM"]["sector"] == "Energy"
+    assert dropped["XOM"]["market_cap"] == 500e9
     proxy = body["proxy"]
     assert proxy["filing_date"] == "2026-04-07" and proxy["document_url"] == HD_PROXY_URL
     assert proxy["confidence"] == "medium" and proxy["unmatched"] == ["Bunnings Group"]
     assert [p["ticker"] for p in proxy["peers"]] == ["TSCO", "LOW", "WSM", "FND", "XOM", "GONE"]  # the raw list stays
-    assert [f["code"] for f in body["flags"]] == ["proxy_peers_unmatched", "proxy_peers_dropped"]
+    assert [f["code"] for f in body["flags"]] == ["proxy_peers_unmatched", "proxy_peers_dropped", "thin_peer_set"]
+    assert "outside the sector: 1, outside the size band: 3, cannot be valued: 1" in body["flags"][1]["message"]
 
 
 def test_peers_without_a_readable_proxy_come_from_the_screen_and_say_so():
@@ -113,5 +121,5 @@ def test_openapi_documents_both_sources():
     assert {"proxy_label", "screen_label", "proxy", "proxy_filter", "proxy_dropped", "peers", "flags"} <= set(schema["properties"])
     assert "source" not in schema["properties"] and "source_label" not in schema["properties"]
     assert "sources" in spec["components"]["schemas"]["SuggestedPeer"]["properties"]
-    assert spec["components"]["schemas"]["ProxyDropRule"]["enum"] == ["sector", "margin", "no_margin", "unvaluable"]
+    assert spec["components"]["schemas"]["ProxyDropRule"]["enum"] == ["sector", "size", "margin", "no_margin", "unvaluable"]
     assert spec["components"]["schemas"]["PeerSource"]["enum"] == ["proxy", "screen"]

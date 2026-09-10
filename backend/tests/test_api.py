@@ -267,7 +267,7 @@ def test_peers_without_market_cap_is_422():
 
 def test_openapi_document_builds(client):
     spec = client.get("/openapi.json").json()
-    assert set(spec["paths"]) == {"/api/health", "/api/company/{ticker}", "/api/comps", "/api/peers/{ticker}"}
+    assert set(spec["paths"]) == {"/api/health", "/api/company/{ticker}", "/api/comps", "/api/comps/export", "/api/peers/{ticker}"}
     comps = spec["paths"]["/api/comps"]["post"]
     assert "200" in comps["responses"] and "404" in comps["responses"] and "502" in comps["responses"]
     assert "CompsResult" in spec["components"]["schemas"]

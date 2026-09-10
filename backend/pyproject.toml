@@ -5,6 +5,7 @@ description = "Public comparable companies analysis engine"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
+    "openpyxl>=3.1",
     "pydantic>=2.5",
     "requests>=2.31",
     "uvicorn>=0.30",
